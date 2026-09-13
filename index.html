@@ -1,0 +1,1997 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>La Cabaña · Panel de Inventario</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@500;600;700&family=Fira+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+
+:root{
+  /* Paleta "French Café" — crema + malva + café oscuro + taupe/tostado (referencia de la usuaria) */
+  --coffee-900:#2A1D15;--coffee-800:#3B2A1F;--coffee-700:#5C4433;--coffee-600:#8C7565;
+  --coffee-400:#B7A69B;--coffee-200:#EAD9C9;--coffee-100:#F3E9DD;--coffee-50:#FAF3EA;
+  --mauve-700:#A5716F;--mauve-600:#BE8A8A;--mauve-100:#F3E2DE;
+  --tan-600:#C9A575;
+  /* Los siguientes son solo semánticos de estado (disponible/reserva/vendido/devuelto) —
+     nunca son el acento de marca, así se distinguen del malva a simple vista */
+  --forest-700:#5B6E52;--forest-600:#7C8F73;--forest-100:#E7EBE3;
+  --amber-700:#8A5A20;--amber-500:#B5762A;--amber-100:#F3E3CB;
+  --sage-700:#4A5A5C;--sage-600:#657B7D;--sage-100:#E4EAEA;
+  --red-700:#8C2F24;--red-600:#B7412F;--red-100:#F4DED8;
+
+  --color-primary:var(--coffee-700);--color-primary-dark:var(--coffee-800);
+  --color-accent:var(--mauve-600);--color-accent-dark:var(--mauve-700);
+  --color-success:var(--forest-600);--color-danger:var(--red-600);
+  --color-warning:var(--amber-500);--color-info:var(--sage-600);
+
+  --color-bg:var(--coffee-50);--color-surface:#FFFDF9;--color-surface-alt:var(--coffee-100);
+  --color-border:var(--coffee-200);
+  --color-text:var(--coffee-900);--color-text-muted:var(--coffee-600);--color-text-faint:var(--coffee-400);
+
+  --sidebar-bg-1:var(--coffee-800);--sidebar-bg-2:var(--coffee-900);--sidebar-text:#FFFDF9;
+  --sidebar-text-muted:rgba(255,253,249,.68);--sidebar-text-faint:rgba(255,253,249,.42);
+  --sidebar-border:rgba(255,253,249,.14);--sidebar-active-bg:var(--mauve-600);--sidebar-active-text:var(--coffee-900);
+
+  --shadow:0 1px 3px rgba(36,23,18,.12);--shadow-lg:0 12px 28px rgba(36,23,18,.18);
+  --font-body:'Fira Sans','Segoe UI',sans-serif;--font-mono:'Fira Code',ui-monospace,monospace;
+  --radius:14px;
+
+  /* Curvas con más carácter que el ease/ease-out por defecto del navegador */
+  --ease-out:cubic-bezier(.23,1,.32,1);
+  --ease-in-out:cubic-bezier(.77,0,.175,1);
+  --ease-drawer:cubic-bezier(.32,.72,0,1);
+}
+*:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;transition-duration:.001ms!important;}
+}
+body{font-family:var(--font-body);background:var(--color-bg);color:var(--color-text);line-height:1.5;font-size:14px;}
+button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit;}
+input,select,textarea{background:var(--color-surface-alt);border:1px solid var(--color-border);border-radius:10px;padding:10px 12px;width:100%;
+  transition:border-color 150ms var(--ease-out),box-shadow 150ms var(--ease-out);}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--color-accent);box-shadow:0 0 0 3px rgba(190,138,138,.15);}
+label{display:block;font-size:12.5px;font-weight:600;color:var(--color-text-muted);margin-bottom:6px;}
+.form-group{margin-bottom:16px;}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+a{color:var(--color-accent);}
+h1,h2,h3{font-weight:700;}
+[hidden]{display:none!important;}
+
+/* ---------- layout ---------- */
+.app-shell{display:flex;min-height:100vh;}
+.sidebar{width:260px;flex-shrink:0;background:linear-gradient(160deg,var(--sidebar-bg-1),var(--sidebar-bg-2));
+  color:var(--sidebar-text);padding:22px 16px;display:flex;flex-direction:column;}
+.sidebar-footer-art{margin-top:auto;padding-top:26px;display:flex;justify-content:center;opacity:.85;}
+.sidebar-footer-art img{width:104px;height:104px;object-fit:contain;filter:drop-shadow(0 8px 14px rgba(0,0,0,.28));}
+.sidebar-brand{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
+.sidebar-brand .emblem{width:36px;height:36px;border-radius:10px;background:linear-gradient(160deg,var(--color-accent),var(--coffee-800));
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.sidebar-brand .emblem svg{width:18px;height:18px;stroke:#fff;}
+.sidebar-brand-text .name{font-weight:700;font-size:16px;}
+.sidebar-brand-text .role{font-size:11px;color:var(--sidebar-text-faint);}
+.sidebar-divider{height:1px;background:var(--sidebar-border);margin:16px 0;}
+.nav-section-title{color:var(--sidebar-text-faint);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
+  font-weight:700;margin:18px 6px 8px;}
+.nav-item{display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:10px 14px;border:none;background:none;
+  color:var(--sidebar-text-muted);border-radius:10px;cursor:pointer;margin-bottom:2px;transition:background .15s,color .15s;}
+.nav-item svg{width:17px;height:17px;stroke:currentColor;fill:none;flex-shrink:0;}
+.nav-item:hover{background:rgba(248,250,252,.08);color:var(--sidebar-text);}
+.nav-item.active{background:var(--sidebar-active-bg);color:var(--sidebar-active-text);font-weight:600;}
+.nav-badge{margin-left:auto;background:var(--red-600);color:#fff;font-size:10px;font-weight:700;border-radius:999px;
+  padding:1px 6px;min-width:16px;text-align:center;}
+
+.content{flex:1;min-width:0;display:flex;flex-direction:column;}
+.topbar{background:var(--color-surface);border-bottom:1px solid var(--color-border);padding:14px 26px;
+  display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;}
+.topbar-title{font-size:19px;font-weight:700;}
+.topbar-sub{font-size:12px;color:var(--color-text-muted);}
+.topbar-right{display:flex;align-items:center;gap:10px;}
+.main{flex:1;padding:24px 26px 60px;max-width:1400px;width:100%;}
+button.menu-toggle{display:none;}
+.sidebar-scrim{position:fixed;inset:0;background:rgba(24,17,10,.45);z-index:299;
+  opacity:0;pointer-events:none;transition:opacity 220ms var(--ease-out);}
+.sidebar-scrim.open{opacity:1;pointer-events:auto;}
+@media (max-width:980px){
+  .sidebar{position:fixed;top:0;left:0;height:100vh;height:100dvh;z-index:300;
+    width:min(82vw,300px);transform:translateX(-100%);transition:transform 280ms var(--ease-drawer);}
+  .sidebar.open{transform:translateX(0);box-shadow:var(--shadow-lg);}
+  button.menu-toggle{display:inline-flex;}
+  .form-row{grid-template-columns:1fr;}
+}
+
+/* ---------- buttons / icon buttons ---------- */
+.btn{padding:10px 18px;border:none;border-radius:10px;cursor:pointer;font-weight:600;font-size:13.5px;
+  display:inline-flex;align-items:center;gap:8px;
+  transition:background 150ms var(--ease-out),transform 120ms var(--ease-out),filter 150ms var(--ease-out),box-shadow 150ms var(--ease-out);}
+.btn svg{width:15px;height:15px;stroke:currentColor;fill:none;}
+.btn:active{transform:scale(.97);}
+.btn-primary{background:var(--color-accent);color:#fff;}
+.btn-primary:hover{background:var(--color-accent-dark);}
+.btn-secondary{background:var(--color-surface-alt);color:var(--color-text);border:1px solid var(--color-border);}
+.btn-secondary:hover{background:var(--coffee-200);}
+.btn-danger{background:var(--red-600);color:#fff;}
+.btn-danger:hover{filter:brightness(.92);}
+.btn-ghost{background:transparent;color:var(--color-text-muted);}
+.btn-ghost:hover{background:var(--color-surface-alt);}
+.btn-block{width:100%;justify-content:center;}
+.btn:disabled{opacity:.5;cursor:not-allowed;}
+.btn:disabled:active{transform:none;}
+.btn-sm{padding:6px 12px;font-size:12.5px;}
+
+.icon-btn{--bg:var(--coffee-100);--fg:var(--coffee-700);width:34px;height:34px;border-radius:50%;border:none;
+  background:var(--bg);color:var(--fg);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;
+  transition:transform 150ms var(--ease-out),filter 150ms var(--ease-out);position:relative;}
+.icon-btn svg{width:15px;height:15px;stroke:currentColor;fill:none;}
+@media (hover:hover) and (pointer:fine){
+  .icon-btn:hover{transform:translateY(-1px);filter:brightness(1.05);}
+}
+.icon-btn:active{transform:scale(.93);}
+.icon-btn.view{--bg:var(--coffee-200);--fg:var(--coffee-700);}
+.icon-btn.edit{--bg:var(--amber-100);--fg:var(--amber-700);}
+.icon-btn.delete{--bg:var(--red-100);--fg:var(--red-700);}
+.icon-btn.confirm{--bg:var(--forest-100);--fg:var(--forest-700);}
+.icon-btn.info{--bg:var(--sage-100);--fg:var(--sage-700);}
+[data-tip]{position:relative;}
+[data-tip]::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 7px);left:50%;
+  transform:translateX(-50%) translateY(3px) scale(.94);transform-origin:bottom center;
+  background:var(--coffee-900);color:#fff;font-size:11px;padding:4px 9px;border-radius:6px;white-space:nowrap;
+  opacity:0;pointer-events:none;transition:opacity 140ms var(--ease-out),transform 140ms var(--ease-out);z-index:20;}
+[data-tip]:hover::after{opacity:1;transform:translateX(-50%) translateY(0) scale(1);}
+
+/* ---------- cards / kpis ---------- */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:24px;}
+.kpi-card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:18px;}
+.kpi-top{display:flex;align-items:center;gap:12px;margin-bottom:14px;}
+.kpi-icon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.kpi-icon.icon-success{background:var(--forest-100);color:var(--forest-700);}
+.kpi-icon.icon-warn{background:var(--amber-100);color:var(--amber-700);}
+.kpi-icon.icon-info{background:var(--sage-100);color:var(--sage-700);}
+.kpi-icon.icon-danger{background:var(--red-100);color:var(--red-700);}
+.kpi-icon.icon-neutral{background:var(--coffee-100);color:var(--coffee-700);}
+.kpi-icon svg{width:17px;height:17px;stroke:currentColor;fill:none;}
+.kpi-label{font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--color-text-faint);}
+.kpi-value{font-size:24px;font-weight:700;}
+.kpi-sub{font-size:11.5px;color:var(--color-text-muted);margin-top:4px;}
+
+.panel{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:20px;margin-bottom:22px;}
+.panel-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;}
+.panel-title{font-size:16px;font-weight:700;}
+.panel-actions{display:flex;gap:10px;flex-wrap:wrap;}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px;}
+.toolbar input,.toolbar select{width:auto;min-width:170px;}
+
+/* ---------- tables ---------- */
+.table-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;}
+th{text-align:left;padding:10px 12px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--color-text-faint);border-bottom:1px solid var(--color-border);white-space:nowrap;}
+td{padding:12px;border-bottom:1px solid var(--color-border);font-size:13.5px;vertical-align:middle;}
+tbody tr:hover{background:var(--color-surface-alt);}
+.empty-row td{text-align:center;color:var(--color-text-faint);padding:30px;}
+
+/* ---------- badges ---------- */
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;}
+.badge-success{background:var(--forest-100);color:var(--forest-700);}
+.badge-warning{background:var(--amber-100);color:var(--amber-700);}
+.badge-info{background:var(--sage-100);color:var(--sage-700);}
+.badge-danger{background:var(--red-100);color:var(--red-700);}
+.badge-neutral{background:var(--coffee-100);color:var(--coffee-600);}
+
+/* ---------- kanban ---------- */
+/* Cada fase es una sección de ancho completo (no 3 columnas apretadas), con las
+   tarjetas en una cuadrícula que acumula en horizontal Y vertical. Con muchos
+   productos, se colapsa a un par de filas y un botón "Ver todos" expande. */
+.kanban{display:flex;flex-direction:column;gap:18px;}
+.kanban-col{background:var(--color-surface-alt);border-radius:var(--radius);padding:16px;}
+.kanban-col-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding:0 2px;}
+.kanban-col-head .dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:8px;}
+.kanban-col-title{font-weight:700;font-size:14px;display:flex;align-items:center;}
+.kanban-count{background:var(--color-surface);border:1px solid var(--color-border);border-radius:999px;padding:1px 9px;font-size:11px;font-weight:700;color:var(--color-text-muted);margin-left:8px;}
+.kanban-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;position:relative;}
+.kanban-cards.collapsed{max-height:392px;overflow:hidden;}
+.kanban-cards.collapsed::after{content:'';position:absolute;left:0;right:0;bottom:0;height:64px;
+  background:linear-gradient(to bottom, transparent, var(--color-surface-alt));pointer-events:none;}
+.card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;}
+
+.product-card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;overflow:hidden;
+  transition:border-color 150ms var(--ease-out),box-shadow 150ms var(--ease-out);}
+.product-card .pc-info{padding:11px 12px;cursor:pointer;transition:background 120ms var(--ease-out);}
+@media (hover:hover) and (pointer:fine){
+  .product-card .pc-info:hover{background:var(--color-surface-alt);}
+  .product-card:has(.pc-info:hover){border-color:var(--coffee-400);}
+}
+.product-card .pc-info:active{background:var(--coffee-100);}
+.pc-video-flag{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:var(--coffee-800);color:#fff;vertical-align:middle;}
+.pc-video-flag svg{width:8px;height:8px;stroke:currentColor;fill:currentColor;}
+.product-card .body{padding:0 12px 12px;}
+.product-card .name{font-weight:700;font-size:13.5px;margin-bottom:2px;}
+.product-card .cat{font-size:11px;color:var(--color-text-faint);margin-bottom:8px;}
+.product-card .price-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;}
+.product-card .price{font-weight:700;font-size:15px;}
+.product-card .pct{font-size:11px;color:var(--forest-700);font-weight:700;}
+.product-card .who{font-size:11px;color:var(--color-text-muted);margin-top:6px;}
+.who.archived-countdown{display:flex;align-items:center;gap:4px;color:var(--red-700);font-weight:600;}
+.who.archived-countdown svg{width:11px;height:11px;stroke:currentColor;fill:none;flex-shrink:0;}
+.product-card .actions{display:flex;gap:6px;flex-wrap:wrap;padding-top:10px;border-top:1px solid var(--color-border);}
+.icon-actions-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;width:100%;}
+
+/* ---------- modal ---------- */
+.modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.6);display:flex;align-items:center;justify-content:center;
+  z-index:1000;padding:20px;opacity:0;transition:opacity 200ms var(--ease-out);}
+.modal-overlay.open{opacity:1;}
+.modal{background:var(--color-surface);border-radius:18px;max-width:560px;width:100%;max-height:88vh;overflow-y:auto;box-shadow:var(--shadow-lg);
+  transform:scale(.96) translateY(4px);opacity:0;transition:transform 200ms var(--ease-out),opacity 200ms var(--ease-out);}
+.modal-overlay.open .modal{transform:scale(1) translateY(0);opacity:1;}
+.modal.modal-lg{max-width:800px;}
+.modal-head{display:flex;justify-content:space-between;align-items:center;padding:18px 22px;border-bottom:1px solid var(--color-border);position:sticky;top:0;background:var(--color-surface);z-index:2;}
+.modal-title{font-size:16px;font-weight:700;}
+.modal-body{padding:22px;}
+.modal-foot{display:flex;justify-content:flex-end;gap:10px;padding:16px 22px;border-top:1px solid var(--color-border);}
+
+/* ---------- login ---------- */
+.login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(circle at 20% 15%,rgba(190,138,138,.12),transparent 45%) , var(--color-bg);padding:20px;}
+.login-box{background:var(--color-surface);border:1px solid var(--color-border);border-radius:20px;padding:42px 36px;width:100%;max-width:400px;box-shadow:var(--shadow-lg);}
+.login-logo{display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:26px;}
+.login-logo .emblem{width:52px;height:52px;border-radius:14px;background:linear-gradient(160deg,var(--color-accent),var(--coffee-800));display:flex;align-items:center;justify-content:center;}
+.login-logo .emblem svg{width:26px;height:26px;stroke:#fff;}
+.login-logo .name{font-size:22px;font-weight:800;}
+.login-logo .sub{font-size:12.5px;color:var(--color-text-muted);}
+.login-error{background:var(--red-100);color:var(--red-700);padding:11px 14px;border-radius:10px;font-size:13px;margin-bottom:16px;}
+
+/* ---------- user menu / notifications ---------- */
+.user-chip{display:flex;align-items:center;gap:9px;background:var(--color-surface-alt);border:1px solid var(--color-border);border-radius:999px;padding:5px 14px 5px 5px;cursor:pointer;}
+.user-chip .avatar{width:30px;height:30px;border-radius:50%;background:var(--color-accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;}
+.user-chip .info{line-height:1.2;}
+.user-chip .info .n{font-weight:600;font-size:12.5px;}
+.user-chip .info .r{font-size:10.5px;color:var(--color-text-muted);}
+.dropdown{position:absolute;top:calc(100% + 8px);right:0;background:var(--color-surface);border:1px solid var(--color-border);
+  border-radius:12px;box-shadow:var(--shadow-lg);min-width:230px;z-index:120;overflow:hidden;
+  transform-origin:top right;opacity:0;transform:scale(.95) translateY(-4px);pointer-events:none;
+  transition:opacity 150ms var(--ease-out),transform 150ms var(--ease-out);}
+.dropdown.open{opacity:1;transform:scale(1) translateY(0);pointer-events:auto;}
+.dropdown-item{display:flex;align-items:center;gap:10px;width:100%;padding:11px 14px;background:none;border:none;text-align:left;cursor:pointer;font-size:13px;transition:background 120ms var(--ease-out);}
+.dropdown-item:hover{background:var(--color-surface-alt);}
+.dropdown-item svg{width:15px;height:15px;stroke:currentColor;fill:none;}
+.dropdown-sep{height:1px;background:var(--color-border);}
+.dropdown-label{padding:9px 14px 4px;font-size:10.5px;color:var(--color-text-faint);text-transform:uppercase;font-weight:700;}
+.notif-item{display:flex;gap:10px;padding:12px 14px;border-bottom:1px solid var(--color-border);cursor:pointer;}
+.notif-item:hover{background:var(--color-surface-alt);}
+.notif-item.unread{background:rgba(190,138,138,.05);}
+.notif-item .dot{width:8px;height:8px;border-radius:50%;background:var(--color-accent);flex-shrink:0;margin-top:5px;}
+.notif-item .txt .t{font-weight:600;font-size:12.5px;}
+.notif-item .txt .d{font-size:12px;color:var(--color-text-muted);}
+.notif-item .txt .ts{font-size:10.5px;color:var(--color-text-faint);margin-top:2px;}
+.pos-rel{position:relative;}
+.bell-dot{position:absolute;top:2px;right:2px;width:9px;height:9px;border-radius:50%;background:var(--red-600);border:2px solid var(--color-surface);}
+
+/* ---------- misc ---------- */
+.toast-stack{position:fixed;bottom:20px;right:20px;z-index:2000;display:flex;flex-direction:column;gap:10px;}
+.toast{background:var(--coffee-900);color:#fff;padding:12px 18px;border-radius:10px;font-size:13px;box-shadow:var(--shadow-lg);
+  display:flex;align-items:center;gap:10px;
+  opacity:0;transform:translateY(8px) scale(.96);
+  transition:opacity 200ms var(--ease-out),transform 200ms var(--ease-out);}
+.toast.open{opacity:1;transform:translateY(0) scale(1);}
+.toast.success{background:var(--forest-700);}
+.toast.danger{background:var(--red-700);}
+.photo-drop{border:1.5px dashed var(--color-border);border-radius:12px;padding:16px;text-align:center;cursor:pointer;background:var(--color-surface-alt);}
+.photo-drop:hover{border-color:var(--color-accent);}
+.photo-preview-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:10px;}
+.photo-preview{position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;background:var(--coffee-100);}
+.photo-preview img{width:100%;height:100%;object-fit:cover;}
+.photo-preview button{position:absolute;top:3px;right:3px;width:19px;height:19px;border-radius:50%;background:rgba(15,23,42,.75);color:#fff;border:none;cursor:pointer;font-size:11px;line-height:1;}
+.gasto-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--color-border);}
+.gasto-row input[type=checkbox]{width:auto;}
+.gasto-row .g-name{flex:1;font-size:13px;}
+.gasto-row input[type=number]{width:90px;}
+.calc-box{background:var(--color-surface-alt);border-radius:12px;padding:14px 16px;margin-top:14px;}
+.calc-row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;}
+.calc-row.total{font-weight:700;font-size:15px;border-top:1px dashed var(--color-border);margin-top:6px;padding-top:8px;}
+.calc-row.comision{color:var(--forest-700);font-weight:700;}
+.video-embed{position:relative;width:100%;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:12px;background:#000;margin:0 auto 14px;}
+.video-embed iframe{position:absolute;inset:0;width:100%;height:100%;border:0;}
+/* TikTok es vertical (9:16, "estilo teléfono") — un iframe 16:9 lo deja aplastado */
+.video-embed.tiktok{width:100%;max-width:300px;height:auto;padding-bottom:0;aspect-ratio:9/16;}
+.pill-tabs{display:flex;gap:6px;background:var(--color-surface-alt);padding:4px;border-radius:999px;width:fit-content;margin-bottom:16px;}
+.pill-tab{padding:7px 16px;border-radius:999px;border:none;background:none;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--color-text-muted);}
+.pill-tab.active{background:var(--color-surface);color:var(--color-text);box-shadow:var(--shadow);}
+.bar-chart{display:flex;align-items:flex-end;gap:6px;height:140px;}
+.bar-chart .bar{flex:1;background:var(--color-accent);border-radius:4px 4px 0 0;min-height:2px;position:relative;}
+.bar-chart .bar:hover{background:var(--color-accent-dark);}
+.bar-chart-labels{display:flex;gap:6px;margin-top:6px;}
+.bar-chart-labels span{flex:1;text-align:center;font-size:9.5px;color:var(--color-text-faint);}
+.public-page{max-width:520px;margin:0 auto;padding:30px 18px 60px;}
+.public-card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:18px;overflow:hidden;box-shadow:var(--shadow-lg);}
+.public-gallery{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;}
+.public-gallery img{width:100%;flex-shrink:0;scroll-snap-align:start;aspect-ratio:4/3;object-fit:cover;}
+.public-body{padding:20px;}
+.qr-box{text-align:center;}
+.theme-swatch-grid{display:flex;gap:12px;flex-wrap:wrap;}
+.theme-swatch{--swatch:#BE8A8A;width:38px;height:38px;border-radius:50%;border:3px solid transparent;background:var(--swatch);
+  cursor:pointer;position:relative;transition:transform 150ms var(--ease-out),border-color 150ms var(--ease-out);}
+.theme-swatch:hover{transform:translateY(-2px) scale(1.06);}
+.theme-swatch:active{transform:scale(.93);}
+.theme-swatch.active{border-color:var(--color-text);}
+.theme-swatch.active::after{content:'';position:absolute;inset:-6px;border:1.5px solid var(--color-border);border-radius:50%;}
+.qr-box canvas,.qr-box img{margin:0 auto;}
+.text-muted{color:var(--color-text-muted);}
+.text-faint{color:var(--color-text-faint);}
+.text-center{text-align:center;}
+.mt-8{margin-top:8px;}.mt-16{margin-top:16px;}.mb-0{margin-bottom:0;}
+.flex-between{display:flex;justify-content:space-between;align-items:center;}
+</style>
+</head>
+<body>
+
+<!-- ================= PUBLIC PRODUCT PAGE (sin login) ================= -->
+<div id="publicPage" class="public-page" hidden></div>
+
+<!-- ================= LOGIN ================= -->
+<div id="loginScreen" class="login-screen">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="emblem"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M3 9l9-6 9 6"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/></svg></div>
+      <div class="name">La Cabaña</div>
+      <div class="sub">Panel de inventario</div>
+    </div>
+    <div id="loginError" class="login-error" hidden></div>
+    <form id="loginForm">
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="loginEmail" placeholder="tu@email.com" required autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label>Contraseña</label>
+        <input type="password" id="loginPassword" placeholder="••••••••" required autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">Ingresar</button>
+    </form>
+  </div>
+</div>
+
+<!-- ================= APP ================= -->
+<div id="appShell" class="app-shell" hidden>
+  <div class="sidebar-scrim" id="sidebarScrim"></div>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="emblem"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#fff"><path d="M3 9l9-6 9 6"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/></svg></div>
+      <div class="sidebar-brand-text">
+        <div class="name">La Cabaña</div>
+        <div class="role" id="sidebarRole">Panel</div>
+      </div>
+    </div>
+    <div class="sidebar-divider"></div>
+    <nav id="sidebarNav"></nav>
+    <div class="sidebar-footer-art"><img src="Cafe.webp" alt="" aria-hidden="true"></div>
+  </aside>
+
+  <div class="content">
+    <div class="topbar">
+      <div style="display:flex;align-items:center;gap:14px;">
+        <button class="icon-btn menu-toggle" id="menuToggle"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
+        <div>
+          <div class="topbar-title" id="pageTitle">Dashboard</div>
+          <div class="topbar-sub" id="pageSub"></div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div class="pos-rel">
+          <button class="icon-btn" id="notifBtn" data-tip="Notificaciones"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="bell-dot" id="bellDot" hidden></span></button>
+          <div class="dropdown" id="notifDropdown" style="width:320px;max-height:400px;overflow-y:auto;"></div>
+        </div>
+        <div class="pos-rel">
+          <div class="user-chip" id="userChip">
+            <div class="avatar" id="userAvatar">A</div>
+            <div class="info"><div class="n" id="userName">—</div><div class="r" id="userRole">—</div></div>
+          </div>
+          <div class="dropdown" id="userDropdown"></div>
+        </div>
+      </div>
+    </div>
+    <div class="main" id="mainContent"></div>
+  </div>
+</div>
+
+<div id="modalRoot"></div>
+<div class="toast-stack" id="toastStack"></div>
+
+<script>
+/* =====================================================================
+   CAPA DE DATOS — Supabase real
+   DB.state sigue siendo una caché en memoria (así todas las páginas/render
+   siguen leyendo de forma síncrona, sin cambios); solo la carga inicial y
+   las mutaciones hablan de verdad con Supabase (tablas con RLS + funciones
+   RPC "fn_..." para las operaciones que necesitan ser atómicas o que solo
+   puede hacer un rol específico).
+===================================================================== */
+const SUPABASE_URL = 'https://uevrzmngjwscyixcockh.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_jDANLTFBCmxchPX6EZbmxA_Emy10pzC';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const money = (n) => ((DB.state && DB.state.configuracion && DB.state.configuracion.moneda_simbolo) || 'Q') + ' ' + (Number(n)||0).toFixed(2);
+
+// configuracion llega como filas clave/valor/tipo; el resto del panel espera un objeto plano ya tipado
+function configRowsToObject(rows){
+  const c = {};
+  (rows||[]).forEach(r=>{
+    let v = r.valor;
+    if(r.tipo==='number') v = Number(v);
+    else if(r.tipo==='boolean') v = v==='true';
+    c[r.clave] = v;
+  });
+  return c;
+}
+
+const DB = {
+  state: null,
+  authUserId: null,
+
+  // Carga TODO lo que la sesión actual puede ver (RLS decide qué filas llegan)
+  // y arma la caché en memoria que el resto del panel sigue leyendo síncrono.
+  async fetchAll(){
+    const [usuariosRes, usuariosPubRes, configRes, cajasRes, productosRes, fotosRes,
+           categoriasRes, gastosRes, gastosAplicadosRes, ventaHistorialRes,
+           pagosRes, devolucionesRes, bitacoraRes, notifRes] = await Promise.all([
+      sb.from('usuarios').select('*'),
+      sb.from('usuarios_publico').select('*'),
+      sb.from('configuracion').select('*'),
+      sb.from('cajas').select('*').order('fecha_apertura', { ascending:false }),
+      sb.from('productos').select('*').order('created_at', { ascending:false }),
+      sb.from('fotos_producto').select('*'),
+      sb.from('categorias').select('*').order('nombre'),
+      sb.from('gastos').select('*'),
+      sb.from('gastos_aplicados').select('*'),
+      sb.from('venta_historial').select('*').order('fecha_venta', { ascending:false }),
+      sb.from('pagos_comision').select('*').order('fecha_pago', { ascending:false }),
+      sb.from('devoluciones').select('*').order('fecha_solicitud', { ascending:false }),
+      sb.from('bitacora_cambios').select('*').order('created_at', { ascending:false }).limit(200),
+      sb.from('notificaciones').select('*').order('created_at', { ascending:false }).limit(50),
+    ]);
+    // La tabla "usuarios" solo trae la fila propia (o todas, si eres admin);
+    // usuarios_publico trae nombre/género/rol de todo el mundo. Se combinan
+    // para que "Apartado por X" siempre resuelva el nombre de cualquier compañera.
+    const porId = new Map();
+    (usuariosPubRes.data||[]).forEach(u => porId.set(u.id, { ...u }));
+    (usuariosRes.data||[]).forEach(u => porId.set(u.id, { ...porId.get(u.id), ...u }));
+    this.state = {
+      usuarios: [...porId.values()],
+      configuracion: configRowsToObject(configRes.data),
+      cajas: cajasRes.data || [],
+      productos: productosRes.data || [],
+      fotos: fotosRes.data || [],
+      categorias: categoriasRes.data || [],
+      gastos: gastosRes.data || [],
+      gastos_aplicados: gastosAplicadosRes.data || [],
+      venta_historial: ventaHistorialRes.data || [],
+      pagos_comision: pagosRes.data || [],
+      devoluciones: devolucionesRes.data || [],
+      bitacora: bitacoraRes.data || [],
+      notificaciones: notifRes.data || [],
+    };
+  },
+
+  currentUser(){ return this.state ? (this.state.usuarios.find(u => u.id === this.authUserId) || null) : null; },
+  isAdmin(u){ u = u || this.currentUser(); return !!u && u.rol === 'administrador'; },
+  rolLabel(u){
+    if(!u) return '';
+    if(u.rol === 'administrador') return u.genero === 'F' ? 'Administradora' : 'Administrador';
+    return u.genero === 'F' ? 'Vendedora' : 'Vendedor';
+  },
+
+  async login(email, password){
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    if(error) return { ok:false, error: error.message==='Invalid login credentials' ? 'Email o contraseña inválidos' : error.message };
+    this.authUserId = data.user.id;
+    await this.fetchAll();
+    const u = this.currentUser();
+    if(!u){ await sb.auth.signOut(); this.authUserId = null; return { ok:false, error:'Tu cuenta no tiene un perfil en el sistema todavía. Avísale al administrador.' }; }
+    if(!u.activo){ await sb.auth.signOut(); this.authUserId = null; return { ok:false, error:'Tu cuenta está desactivada.' }; }
+    return { ok:true, data:u };
+  },
+  async logout(){ await sb.auth.signOut(); this.state = null; this.authUserId = null; },
+
+  // ---------------- PRODUCTOS ----------------
+  async crearProducto(data, archivos){
+    const insertData = {
+      nombre: data.nombre, descripcion: data.descripcion || '', categoria: data.categoria || null,
+      costo: Number(data.costo), precio_venta: Number(data.precio_venta),
+      porcentaje_ganancia: Number(data.porcentaje_ganancia) || this.state.configuracion.comision_default_porcentaje,
+      url_video: data.url_video || null, caja_id: data.caja_id || null,
+      created_by_admin: this.currentUser().id
+    };
+    const { data:prod, error } = await sb.from('productos').insert(insertData).select().single();
+    if(error) return { ok:false, error: error.message };
+    if(archivos && archivos.length) await this.subirFotos(prod.id, 'inventario', archivos);
+    await sb.rpc('fn_registrar_bitacora', { p_tipo:'crear', p_tabla:'productos', p_registro_id:prod.id, p_descripcion:'Producto creado: '+prod.nombre });
+    return { ok:true, data:prod };
+  },
+  async editarProducto(id, data){
+    const { data:row, error } = await sb.from('productos').update(data).eq('id', id).select().single();
+    if(error) return { ok:false, error: error.message };
+    await sb.rpc('fn_registrar_bitacora', { p_tipo:'editar', p_tabla:'productos', p_registro_id:id, p_descripcion:'Producto editado: '+row.nombre });
+    return { ok:true, data:row };
+  },
+  async eliminarProducto(id){
+    const prod = this.state.productos.find(x=>x.id===id);
+    const { error } = await sb.from('productos').delete().eq('id', id);
+    if(error) return { ok:false, error: error.message };
+    await sb.rpc('fn_registrar_bitacora', { p_tipo:'eliminar', p_tabla:'productos', p_registro_id:id, p_descripcion:'Producto eliminado: '+(prod?prod.nombre:'') });
+    return { ok:true };
+  },
+  async reingresarProducto(id){
+    const { data:row, error } = await sb.from('productos').update({
+      estado:'en_inventario', reservado_por_id:null, reservado_en:null, vendido_por_id:null, vendido_en:null, archivado:false, archivado_en:null
+    }).eq('id', id).eq('estado','devuelto').select().single();
+    if(error) return { ok:false, error: error.message };
+    await sb.rpc('fn_registrar_bitacora', { p_tipo:'reingresar', p_tabla:'productos', p_registro_id:id, p_descripcion:'Reingresado a inventario tras devolución: '+row.nombre });
+    return { ok:true, data:row };
+  },
+  fotosDe(productoId, fase){
+    return this.state.fotos.filter(f=>f.producto_id===productoId && (!fase || f.fase===fase)).sort((a,b)=>a.orden-b.orden);
+  },
+  // Comprime cada foto en el navegador (canvas) y la sube al bucket público
+  // "productos-fotos"; solo se guarda la URL pública en fotos_producto.
+  async subirFotos(productoId, fase, archivos){
+    const existentes = this.fotosDe(productoId, fase).length;
+    for(let i=0; i<archivos.length; i++){
+      const blob = await compressImageToBlob(archivos[i]);
+      const path = productoId + '/' + fase + '-' + (existentes+i+1) + '-' + Date.now() + '.jpg';
+      const { error: upErr } = await sb.storage.from('productos-fotos').upload(path, blob, { contentType:'image/jpeg' });
+      if(upErr){ toast('No se pudo subir una foto: '+upErr.message,'danger'); continue; }
+      const { data:pub } = sb.storage.from('productos-fotos').getPublicUrl(path);
+      await sb.from('fotos_producto').insert({ producto_id:productoId, url_foto:pub.publicUrl, fase, orden: existentes+i+1, uploaded_by_id:this.currentUser().id });
+    }
+  },
+
+  // ---------------- APARTAR / LIBERAR / VENDER (atómico, vía RPC) ----------------
+  async apartarProducto(productoId){
+    const { data, error } = await sb.rpc('fn_apartar_producto', { p_producto_id: productoId });
+    if(error) return { ok:false, error: error.message };
+    return { ok:true, data };
+  },
+  async liberarProducto(productoId){
+    const { data, error } = await sb.rpc('fn_liberar_producto', { p_producto_id: productoId });
+    if(error) return { ok:false, error: error.message };
+    return { ok:true, data };
+  },
+  async venderProducto(productoId, gastosSeleccionados){
+    const { data, error } = await sb.rpc('fn_vender_producto', { p_producto_id: productoId, p_gastos: gastosSeleccionados||[] });
+    if(error) return { ok:false, error: error.message };
+    return { ok:true, data };
+  },
+
+  // "Archivar Vendidos": el servidor decide (misma regla que antes) — solo
+  // elimina fotos de productos vendidos hace N días y los marca archivado=true.
+  async archivarVendidos(){
+    const { data, error } = await sb.rpc('fn_archivar_vendidos');
+    return error ? 0 : data;
+  },
+  diasParaEliminar(p){
+    if(!p.archivado || !p.archivado_en) return null;
+    const dias = Number(this.state.configuracion.dias_eliminacion_productos_archivados)||30;
+    const transcurridos = (Date.now() - new Date(p.archivado_en).getTime()) / 86400000;
+    return Math.max(0, Math.ceil(dias - transcurridos));
+  },
+  async eliminarArchivadosVencidos(){
+    const { data, error } = await sb.rpc('fn_eliminar_archivados_vencidos');
+    return error ? 0 : data;
+  },
+  async liberarReservasVencidas(){
+    const { data, error } = await sb.rpc('fn_liberar_reservas_vencidas');
+    return error ? 0 : data;
+  },
+
+  // ---------------- CAJAS ----------------
+  async crearCaja(data){
+    const { data:row, error } = await sb.from('cajas').insert({
+      nombre: data.nombre, descripcion: data.descripcion||null, costo_total_pagado: Number(data.costo_total_pagado)||0,
+      created_by_admin: this.currentUser().id, notas: data.notas||null
+    }).select().single();
+    if(error) return { ok:false, error: error.message };
+    await sb.rpc('fn_registrar_bitacora', { p_tipo:'crear', p_tabla:'cajas', p_registro_id:row.id, p_descripcion:'Caja creada: '+row.nombre });
+    return { ok:true, data:row };
+  },
+  async cerrarCaja(id){
+    const { data, error } = await sb.rpc('fn_cerrar_caja', { p_caja_id:id });
+    if(error) return { ok:false, error: error.message };
+    return { ok:true, data };
+  },
+  productosDeCaja(cajaId){ return this.state.productos.filter(p=>p.caja_id===cajaId); },
+  ventasDeCaja(cajaId){ return this.state.venta_historial.filter(v=>v.caja_id===cajaId); },
+
+  // ---------------- CATEGORÍAS ----------------
+  contarProductosPorCategoria(nombre){ return this.state.productos.filter(p=>p.categoria===nombre).length; },
+  async crearCategoria(nombre){
+    nombre = (nombre||'').trim(); if(!nombre) return { ok:false, error:'NOMBRE_VACIO' };
+    const { data, error } = await sb.from('categorias').insert({ nombre, created_by_admin:this.currentUser().id }).select().single();
+    if(error) return { ok:false, error: error.code==='23505' ? 'YA_EXISTE' : error.message };
+    await sb.rpc('fn_registrar_bitacora', { p_tipo:'crear', p_tabla:'categorias', p_registro_id:data.id, p_descripcion:'Categoría creada: '+nombre });
+    return { ok:true, data };
+  },
+  async editarCategoria(id, nombre){
+    nombre = (nombre||'').trim(); if(!nombre) return { ok:false, error:'NOMBRE_VACIO' };
+    const anterior = (this.state.categorias.find(c=>c.id===id)||{}).nombre;
+    const { data, error } = await sb.from('categorias').update({ nombre }).eq('id', id).select().single();
+    if(error) return { ok:false, error: error.code==='23505' ? 'YA_EXISTE' : error.message };
+    if(anterior && anterior!==nombre) await sb.from('productos').update({ categoria: nombre }).eq('categoria', anterior);
+    await sb.rpc('fn_registrar_bitacora', { p_tipo:'editar', p_tabla:'categorias', p_registro_id:id, p_descripcion:'Categoría renombrada: '+anterior+' → '+nombre });
+    return { ok:true, data };
+  },
+  async eliminarCategoria(id){
+    const cat = this.state.categorias.find(c=>c.id===id);
+    const { error } = await sb.from('categorias').delete().eq('id', id);
+    if(error) return { ok:false, error: error.message };
+    await sb.rpc('fn_registrar_bitacora', { p_tipo:'eliminar', p_tabla:'categorias', p_registro_id:id, p_descripcion:'Categoría eliminada: '+(cat?cat.nombre:'') });
+    return { ok:true };
+  },
+
+  // ---------------- GASTOS ----------------
+  async crearGasto(data){
+    const { data:row, error } = await sb.from('gastos').insert({ nombre:data.nombre, monto_default:Number(data.monto_default), tipo:data.tipo, activo:true, created_by_admin:this.currentUser().id }).select().single();
+    if(error) return { ok:false, error: error.message };
+    await sb.rpc('fn_registrar_bitacora', { p_tipo:'crear', p_tabla:'gastos', p_registro_id:row.id, p_descripcion:'Gasto creado: '+row.nombre });
+    return { ok:true, data:row };
+  },
+  async editarGasto(id, data){
+    const { data:row, error } = await sb.from('gastos').update(data).eq('id', id).select().single();
+    if(error) return { ok:false, error: error.message };
+    await sb.rpc('fn_registrar_bitacora', { p_tipo:'editar', p_tabla:'gastos', p_registro_id:id, p_descripcion:'Gasto editado: '+row.nombre });
+    return { ok:true, data:row };
+  },
+  async eliminarGasto(id){
+    const gasto = this.state.gastos.find(g=>g.id===id);
+    const { error } = await sb.from('gastos').delete().eq('id', id);
+    if(error) return { ok:false, error: error.message };
+    await sb.rpc('fn_registrar_bitacora', { p_tipo:'eliminar', p_tabla:'gastos', p_registro_id:id, p_descripcion:'Gasto eliminado: '+(gasto?gasto.nombre:'') });
+    return { ok:true };
+  },
+
+  // ---------------- COMISIONES ----------------
+  resumenComisiones(vendedorId){
+    const ventas = this.state.venta_historial.filter(v=>v.vendedor_id===vendedorId && v.estado_venta==='vendido');
+    const ganado = ventas.reduce((s,v)=>s+v.comision_monto,0);
+    const pagado = ventas.filter(v=>v.comision_estado==='pagada').reduce((s,v)=>s+v.comision_monto,0);
+    const pendiente = ventas.filter(v=>v.comision_estado==='ganada').reduce((s,v)=>s+v.comision_monto,0);
+    return { ganado, pagado, pendiente, ventas };
+  },
+  ventasPendientesDePago(vendedorId){
+    return this.state.venta_historial.filter(v=>v.vendedor_id===vendedorId && v.estado_venta==='vendido' && v.comision_estado==='ganada');
+  },
+  async registrarPagoComision(vendedorId, ventaIds, notas){
+    const { data, error } = await sb.rpc('fn_registrar_pago_comision', { p_vendedor_id:vendedorId, p_venta_ids:ventaIds, p_notas: notas||null });
+    if(error) return { ok:false, error: error.message };
+    return { ok:true, data };
+  },
+  pagosDe(vendedorId){ return this.state.pagos_comision.filter(p=>p.vendedor_id===vendedorId); },
+
+  // ---------------- DEVOLUCIONES ----------------
+  async solicitarDevolucion(ventaHistorialId, razon){
+    const { data, error } = await sb.rpc('fn_solicitar_devolucion', { p_venta_historial_id:ventaHistorialId, p_razon:razon });
+    if(error) return { ok:false, error: error.message };
+    return { ok:true, data };
+  },
+  async resolverDevolucion(id, aprobar, notas){
+    const { data, error } = await sb.rpc('fn_resolver_devolucion', { p_devolucion_id:id, p_aprobar:aprobar, p_notas: notas||null });
+    if(error) return { ok:false, error: error.message };
+    return { ok:true, data };
+  },
+
+  // ---------------- USUARIOS ----------------
+  // No hay crearUsuario a propósito: los usuarios solo se crean dando de alta
+  // en Supabase Authentication (el trigger on_auth_user_created los trae acá).
+  async editarUsuario(id, data){
+    const { data:row, error } = await sb.from('usuarios').update(data).eq('id', id).select().single();
+    if(error) return { ok:false, error: error.message };
+    await sb.rpc('fn_registrar_bitacora', { p_tipo:'editar', p_tabla:'usuarios', p_registro_id:id, p_descripcion:'Usuario editado: '+row.nombre });
+    return { ok:true, data:row };
+  },
+  async actualizarColorTema(usuarioId, tema){
+    const { error } = await sb.rpc('fn_actualizar_mi_color', { p_color_tema: tema });
+    if(error) return { ok:false, error: error.message };
+    const u = this.state.usuarios.find(x=>x.id===usuarioId); if(u) u.color_tema = tema;
+    return { ok:true };
+  },
+  async marcarNotificacionLeida(id){
+    const { error } = await sb.from('notificaciones').update({ leida:true }).eq('id', id);
+    if(!error){ const n=this.state.notificaciones.find(x=>x.id===id); if(n) n.leida=true; }
+  },
+  async marcarTodasLeidas(usuarioId){
+    const { error } = await sb.from('notificaciones').update({ leida:true }).eq('usuario_id', usuarioId).eq('leida', false);
+    if(!error) this.state.notificaciones.filter(n=>n.usuario_id===usuarioId).forEach(n=>n.leida=true);
+  },
+
+  async guardarConfiguracion(data){
+    for(const [clave, valor] of Object.entries(data)){
+      const { error } = await sb.from('configuracion').update({ valor:String(valor) }).eq('clave', clave);
+      if(error) return { ok:false, error: error.message };
+    }
+    Object.assign(this.state.configuracion, data);
+    await sb.rpc('fn_registrar_bitacora', { p_tipo:'editar', p_tabla:'configuracion', p_registro_id:null, p_descripcion:'Configuración actualizada' });
+    return { ok:true };
+  },
+};
+
+// Re-obtiene todo de Supabase y vuelve a pintar la página actual — el "refresco"
+// que sigue a cualquier acción que cambia datos (vender, apartar, guardar...).
+async function refresh(){
+  await DB.fetchAll();
+  refreshBadges();
+  if(currentPage) navigate(currentPage);
+}
+
+/* =====================================================================
+   UTILIDADES
+===================================================================== */
+function toast(msg, type){
+  const el = document.createElement('div');
+  el.className = 'toast' + (type ? ' '+type : '');
+  el.textContent = msg;
+  document.getElementById('toastStack').appendChild(el);
+  requestAnimationFrame(()=>requestAnimationFrame(()=>el.classList.add('open')));
+  const dismiss = ()=>{ el.classList.remove('open'); setTimeout(()=>el.remove(), 200); };
+  setTimeout(dismiss, 3800);
+}
+function fmtDate(iso){ if(!iso) return '—'; const d=new Date(iso); return d.toLocaleDateString('es-GT',{day:'2-digit',month:'short',year:'numeric'})+' '+d.toLocaleTimeString('es-GT',{hour:'2-digit',minute:'2-digit'}); }
+function fmtDateShort(iso){ if(!iso) return '—'; return new Date(iso).toLocaleDateString('es-GT',{day:'2-digit',month:'short'}); }
+function timeAgo(iso){
+  const s = Math.floor((Date.now()-new Date(iso).getTime())/1000);
+  if(s<60) return 'hace un momento';
+  if(s<3600) return 'hace '+Math.floor(s/60)+' min';
+  if(s<86400) return 'hace '+Math.floor(s/3600)+' h';
+  return 'hace '+Math.floor(s/86400)+' d';
+}
+// maxDim/quality bajos a propósito: con ~150 productos x hasta 5 fotos, este mock local
+// (localStorage) se llena rápido. En producción con Supabase Storage esto no aplica —
+// ahí se sube el archivo original y solo se guarda su URL en la fila de fotos_producto.
+function compressImageToBlob(file, maxDim=1280, quality=0.75){
+  return new Promise((resolve,reject)=>{
+    const reader = new FileReader();
+    reader.onload = e=>{
+      const img = new Image();
+      img.onload = ()=>{
+        let w=img.width, h=img.height;
+        if(w>h && w>maxDim){ h=h*maxDim/w; w=maxDim; } else if(h>maxDim){ w=w*maxDim/h; h=maxDim; }
+        const canvas = document.createElement('canvas'); canvas.width=w; canvas.height=h;
+        canvas.getContext('2d').drawImage(img,0,0,w,h);
+        canvas.toBlob(blob=>resolve(blob), 'image/jpeg', quality);
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+function estadoInfo(estado){
+  return ({
+    en_inventario: { label:'Disponible', cls:'badge-success' },
+    en_reserva:    { label:'En Reserva', cls:'badge-warning' },
+    vendido:       { label:'Vendido',    cls:'badge-info' },
+    devuelto:      { label:'Devuelto',   cls:'badge-danger' }
+  })[estado] || { label: estado, cls:'badge-neutral' };
+}
+// Como productos.estado sigue siendo 'vendido' aunque ya se hayan borrado sus
+// fotos, esta función es la que decide qué badge mostrar (agrega "Archivado").
+function productBadgeInfo(p){
+  if(p.archivado) return { label:'Archivado', cls:'badge-neutral' };
+  return estadoInfo(p.estado);
+}
+function parseVideoUrl(url){
+  if(!url) return null;
+  const yt = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{6,})/);
+  if(yt) return { plataforma:'youtube', embedUrl:'https://www.youtube.com/embed/'+yt[1], originalUrl:url };
+  const tt = url.match(/tiktok\.com\/@[\w.-]+\/video\/(\d+)/);
+  if(tt) return { plataforma:'tiktok', embedUrl:'https://www.tiktok.com/embed/v2/'+tt[1], originalUrl:url };
+  return { plataforma:'desconocido', embedUrl:null, originalUrl:url };
+}
+function renderVideoEmbed(url){
+  const info = parseVideoUrl(url);
+  if(!info) return '';
+  if(info.plataforma==='youtube' || info.plataforma==='tiktok'){
+    const esTikTok = info.plataforma==='tiktok';
+    return `<div class="video-embed${esTikTok?' tiktok':''}"><iframe src="${info.embedUrl}" loading="lazy" allow="accelerometer; autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div>
+      <a href="${info.originalUrl}" target="_blank" rel="noopener" class="text-muted" style="font-size:12px;display:inline-block;margin:-8px 0 12px;">Abrir en ${esTikTok?'TikTok':'YouTube'} ↗</a>`;
+  }
+  return `<div class="text-muted" style="font-size:12px;margin-bottom:12px;"><a href="${info.originalUrl}" target="_blank" rel="noopener">Ver video de referencia ↗</a></div>`;
+}
+function icon(name){
+  const I = {
+    dashboard:'<rect x="3" y="12" width="4" height="9"/><rect x="10" y="7" width="4" height="14"/><rect x="17" y="3" width="4" height="18"/>',
+    box:'<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>',
+    bookmark:'<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
+    percent:'<circle cx="12" cy="12" r="9"/><path d="M9 15.5c0 1 1.1 1.5 3 1.5s3-.7 3-1.7-1.2-1.5-3-1.8-3-.7-3-1.8S10.1 10 12 10s3 .5 3 1.5"/><path d="M12 7v1.5M12 15.5V17"/>',
+    plus:'<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+    crate:'<rect x="3" y="7" width="18" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+    card:'<rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>',
+    users:'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+    file:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/>',
+    trending:'<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>',
+    settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+    eye:'<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+    edit:'<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+    trash:'<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>',
+    check:'<polyline points="20 6 9 17 4 12"/>',
+    x:'<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+    bell:'<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
+    logout:'<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
+    qr:'<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><line x1="14" y1="14" x2="14" y2="14.01"/><line x1="18" y1="14" x2="18" y2="18"/><line x1="14" y1="18" x2="14" y2="21"/><line x1="18" y1="21" x2="21" y2="21"/><line x1="21" y1="14" x2="21" y2="17"/>',
+    image:'<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>',
+    play:'<polygon points="5 3 19 12 5 21 5 3"/>',
+    undo:'<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>',
+    download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+    switch:'<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>',
+    search:'<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+    tag:'<path d="M20.59 13.41L11 3.83A2 2 0 0 0 9.59 3.24L3 3v6.59a2 2 0 0 0 .59 1.41l9.58 9.58a2 2 0 0 0 2.82 0l4.6-4.6a2 2 0 0 0 0-2.82z"/><line x1="7.5" y1="7.5" x2="7.51" y2="7.5"/>',
+    key:'<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>',
+    palette:'<circle cx="8" cy="12" r="5"/><circle cx="16" cy="8" r="5"/><circle cx="16" cy="16" r="5"/>',
+  }[name] || '';
+  return `<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${I}</svg>`;
+}
+
+/* =====================================================================
+   PERSONALIZACIÓN DE COLOR POR USUARIO
+   Cada quien puede elegir su propio acento de marca (botones, menú activo,
+   focus). Los semáforos de estado (disponible/reserva/vendido/devuelto)
+   NUNCA cambian — solo el acento de marca es personal.
+===================================================================== */
+const THEME_PRESETS = [
+  { name:'Malva',        base:'#BE8A8A', dark:'#A5716F' },
+  { name:'Terracota',    base:'#C1694F', dark:'#A34F39' },
+  { name:'Mostaza',      base:'#C9A227', dark:'#A6841F' },
+  { name:'Verde Bosque', base:'#7C8F73', dark:'#5B6E52' },
+  { name:'Azul Petróleo',base:'#4C7A82', dark:'#3A5F66' },
+  { name:'Ciruela',      base:'#8B5C7E', dark:'#6E4763' },
+];
+function darkenHex(hex, amount=0.16){
+  const n = hex.replace('#','');
+  const clamp = v => Math.max(0, Math.min(255, Math.round(v)));
+  const r = clamp(parseInt(n.substr(0,2),16)*(1-amount));
+  const g = clamp(parseInt(n.substr(2,2),16)*(1-amount));
+  const b = clamp(parseInt(n.substr(4,2),16)*(1-amount));
+  return '#'+[r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+function idealTextOn(hex){
+  const n = hex.replace('#','');
+  const r=parseInt(n.substr(0,2),16), g=parseInt(n.substr(2,2),16), b=parseInt(n.substr(4,2),16);
+  const lum = (0.299*r+0.587*g+0.114*b)/255;
+  return lum > 0.6 ? '#2A1D15' : '#FFFDF9';
+}
+function applyUserTheme(user){
+  const root = document.documentElement.style;
+  const t = user && user.color_tema;
+  if(t && t.base){
+    root.setProperty('--color-accent', t.base);
+    root.setProperty('--color-accent-dark', t.dark || darkenHex(t.base));
+    root.setProperty('--sidebar-active-bg', t.base);
+    root.setProperty('--sidebar-active-text', idealTextOn(t.base));
+  } else {
+    root.removeProperty('--color-accent');
+    root.removeProperty('--color-accent-dark');
+    root.removeProperty('--sidebar-active-bg');
+    root.removeProperty('--sidebar-active-text');
+  }
+}
+
+/* =====================================================================
+   NAVEGACIÓN / PÁGINAS
+===================================================================== */
+const NAV = {
+  vendedor: [
+    { section:'MI PANEL' },
+    { page:'v-dashboard', label:'Dashboard', icon:'dashboard' },
+    { page:'v-catalogo', label:'Catálogo', icon:'box' },
+    { page:'v-ventas', label:'Mis Ventas', icon:'crate' },
+    { page:'v-comisiones', label:'Mis Comisiones', icon:'percent' },
+  ],
+  administrador: [
+    { section:'ADMINISTRACIÓN' },
+    { page:'a-dashboard', label:'Dashboard', icon:'dashboard' },
+    { page:'a-inventario', label:'Inventario', icon:'box' },
+    { page:'a-nuevo', label:'Nuevo Producto', icon:'plus' },
+    { page:'a-cajas', label:'Cajas', icon:'crate' },
+    { page:'a-categorias', label:'Categorías', icon:'tag' },
+    { page:'a-gastos', label:'Gastos', icon:'card' },
+    { page:'a-comisiones', label:'Comisiones', icon:'percent' },
+    { page:'a-devoluciones', label:'Devoluciones', icon:'undo' },
+    { page:'a-usuarios', label:'Usuarios', icon:'users' },
+    { page:'a-reportes', label:'Reportes', icon:'trending' },
+    { page:'a-bitacora', label:'Bitácora', icon:'file' },
+    { page:'a-config', label:'Configuración', icon:'settings' },
+  ]
+};
+const PAGE_TITLES = {
+  'v-dashboard':['Dashboard','Resumen de tu actividad'],
+  'v-catalogo':['Catálogo','Aparta o vende productos disponibles'],
+  'v-ventas':['Mis Ventas','Historial de productos que has vendido'],
+  'v-comisiones':['Mis Comisiones','Lo que has ganado por tus ventas'],
+  'a-dashboard':['Dashboard','Resumen general del negocio'],
+  'a-inventario':['Inventario','Estado de todos los productos'],
+  'a-nuevo':['Nuevo Producto','Registrar un producto para la venta'],
+  'a-cajas':['Cajas','Lotes de mercancía comprados'],
+  'a-categorias':['Categorías','Organiza el inventario para que escale sin desorden'],
+  'a-gastos':['Gastos','Catálogo de gastos aplicables a una venta'],
+  'a-comisiones':['Comisiones','Cuánto le debes a cada vendedora y qué ya le pagaste'],
+  'a-devoluciones':['Devoluciones','Solicitudes de devolución'],
+  'a-usuarios':['Usuarios','Administradoras y vendedoras del sistema'],
+  'a-reportes':['Reportes','Estadísticas de ventas y ganancias'],
+  'a-bitacora':['Bitácora','Historial de cambios del sistema'],
+  'a-config':['Configuración','Parámetros generales del sistema'],
+};
+
+let currentPage = null;
+
+function buildSidebar(){
+  const u = DB.currentUser();
+  document.getElementById('sidebarRole').textContent = DB.rolLabel(u);
+  const items = NAV[u.rol];
+  const nav = document.getElementById('sidebarNav');
+  nav.innerHTML = items.map(it=>{
+    if(it.section) return `<div class="nav-section-title">${it.section}</div>`;
+    return `<button class="nav-item" data-page="${it.page}">${icon(it.icon)}<span>${it.label}</span></button>`;
+  }).join('');
+  nav.querySelectorAll('.nav-item').forEach(btn=>btn.addEventListener('click', ()=>{ navigate(btn.dataset.page); if(window.innerWidth<=980) setSidebarOpen(false); }));
+}
+
+function navigate(page){
+  currentPage = page;
+  document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active', b.dataset.page===page));
+  const [title,sub] = PAGE_TITLES[page] || [page,''];
+  document.getElementById('pageTitle').textContent = title;
+  document.getElementById('pageSub').textContent = sub;
+  document.getElementById('mainContent').innerHTML = renderPage(page);
+  bindPageEvents(page);
+}
+
+function renderPage(page){
+  const fn = PAGES[page];
+  return fn ? fn() : '<div class="panel">Página no encontrada.</div>';
+}
+
+/* ---------------------------------------------------------------------
+   Helpers de render compartidos
+--------------------------------------------------------------------- */
+function kpi(label, value, iconName, colorClass, sub){
+  return `<div class="kpi-card">
+    <div class="kpi-top"><div class="kpi-icon ${colorClass}">${icon(iconName)}</div><div class="kpi-label">${label}</div></div>
+    <div class="kpi-value">${value}</div>${sub?`<div class="kpi-sub">${sub}</div>`:''}
+  </div>`;
+}
+// Tarjeta compacta: sin foto de entrada (a 100-1000 productos, cargar cientos de
+// miniaturas de golpe pesa). La foto y el detalle completo se ven al hacer clic
+// (abre la ficha) — así toda vendedora/admin puede "ampliar" un producto igual.
+function productCard(p, opts){
+  opts = opts || {};
+  const info = productBadgeInfo(p);
+  const diasParaEliminar = DB.diasParaEliminar(p);
+  const vend = p.reservado_por_id ? DB.state.usuarios.find(u=>u.id===p.reservado_por_id) : null;
+  const cur = DB.currentUser();
+  const hasVideo = !!p.url_video;
+  let actions = '';
+  let ventaActions = '';
+  if(p.estado==='en_inventario'){
+    ventaActions = `<button class="btn btn-secondary btn-sm" data-action="apartar" data-id="${p.id}">${icon('bookmark')} Apartar</button>
+               <button class="btn btn-primary btn-sm" data-action="vender" data-id="${p.id}">${icon('crate')} Vender</button>`;
+  } else if(p.estado==='en_reserva' && p.reservado_por_id===cur.id){
+    ventaActions = `<button class="btn btn-secondary btn-sm" data-action="liberar" data-id="${p.id}">Liberar</button>
+               <button class="btn btn-primary btn-sm" data-action="vender" data-id="${p.id}">${icon('crate')} Vender</button>`;
+  }
+  if(opts.mode==='vendedor'){
+    actions = ventaActions;
+  } else if(opts.mode==='admin'){
+    // El admin también puede vender como cualquier vendedor, además de administrar el producto.
+    actions = `${ventaActions}
+      <div class="icon-actions-row">
+      <button class="icon-btn edit" data-action="editar" data-id="${p.id}" data-tip="Editar">${icon('edit')}</button>
+      <button class="icon-btn info" data-action="qr" data-id="${p.id}" data-tip="Código QR">${icon('qr')}</button>
+      ${(p.estado==='en_inventario' || p.archivado)?`<button class="icon-btn delete" data-action="eliminar" data-id="${p.id}" data-tip="${p.archivado?'Eliminar ahora':'Eliminar'}">${icon('trash')}</button>`:''}
+      ${p.estado==='en_reserva' && p.reservado_por_id!==cur.id?`<button class="icon-btn delete" data-action="liberar" data-id="${p.id}" data-tip="Liberar reserva">${icon('x')}</button>`:''}
+      ${p.estado==='devuelto'?`<button class="icon-btn confirm" data-action="reingresar" data-id="${p.id}" data-tip="Regresar a inventario">${icon('undo')}</button>`:''}
+      </div>`;
+  }
+  return `<div class="product-card">
+    <div class="pc-info" data-action="ver" data-id="${p.id}">
+      <div class="flex-between"><span class="badge ${info.cls}">${info.label}</span><span class="text-faint" style="font-size:10.5px;">${p.codigo}</span></div>
+      <div class="name mt-8">${p.nombre}${hasVideo?` <span class="pc-video-flag" data-tip="Tiene video">${icon('play')}</span>`:''}</div>
+      <div class="cat">${p.categoria||'Sin categoría'}</div>
+      <div class="price-row"><span class="price">${money(p.precio_venta)}</span><span class="pct">${p.porcentaje_ganancia}% comisión</span></div>
+      ${vend?`<div class="who">Apartado por ${vend.nombre}</div>`:''}
+      ${p.vendido_por_id?`<div class="who">Vendido por ${(DB.state.usuarios.find(u=>u.id===p.vendido_por_id)||{}).nombre||'—'}</div>`:''}
+      ${p.archivado?`<div class="who archived-countdown">${icon('trash')} ${diasParaEliminar<=0?'Se elimina en el próximo chequeo':'Se elimina en '+diasParaEliminar+' día'+(diasParaEliminar===1?'':'s')}</div>`:''}
+    </div>
+    <div class="body"><div class="actions">${actions}</div></div>
+  </div>`;
+}
+// Cada fase colapsa a ~2 filas cuando hay muchos productos (100, 500, 1000...);
+// "Ver todos" la expande. El estado de expandido se recuerda mientras navegas.
+const expandedSections = new Set();
+const COLLAPSE_THRESHOLD = 8;
+function kanbanColumn(estado, title, dotColor, productos, mode){
+  const isOpen = expandedSections.has(estado) || productos.length<=COLLAPSE_THRESHOLD;
+  return `<div class="kanban-col">
+    <div class="kanban-col-head">
+      <div class="kanban-col-title"><span class="dot" style="background:${dotColor}"></span>${title}<span class="kanban-count">${productos.length}</span></div>
+      ${productos.length>COLLAPSE_THRESHOLD ? `<button class="btn btn-ghost btn-sm" data-action="toggle-seccion" data-key="${estado}">${isOpen?'Ver menos':'Ver todos'}</button>` : ''}
+    </div>
+    <div class="kanban-cards ${isOpen?'':'collapsed'}">
+      ${productos.length ? productos.map(p=>productCard(p,{mode})).join('') : `<div class="text-faint text-center" style="padding:20px 0;font-size:12.5px;grid-column:1/-1;">Sin productos</div>`}
+    </div>
+  </div>`;
+}
+
+/* ---------------------------------------------------------------------
+   PÁGINAS — VENDEDOR
+--------------------------------------------------------------------- */
+const PAGES = {};
+
+PAGES['v-dashboard'] = () => {
+  const cur = DB.currentUser();
+  const misApartados = DB.state.productos.filter(p=>p.estado==='en_reserva' && p.reservado_por_id===cur.id);
+  const misVentas = DB.state.venta_historial.filter(v=>v.vendedor_id===cur.id);
+  const inicioMes = new Date(); inicioMes.setDate(1); inicioMes.setHours(0,0,0,0);
+  const ventasMes = misVentas.filter(v=>new Date(v.fecha_venta)>=inicioMes && v.estado_venta==='vendido');
+  const comisionGanada = misVentas.filter(v=>v.comision_estado!=='reversada').reduce((s,v)=>s+v.comision_monto,0);
+  const comisionPendiente = misVentas.filter(v=>v.comision_estado==='ganada').reduce((s,v)=>s+v.comision_monto,0);
+  return `
+    <div class="kpi-grid">
+      ${kpi('Productos Apartados', misApartados.length, 'bookmark','icon-info')}
+      ${kpi('Ventas Este Mes', ventasMes.length, 'crate','icon-success')}
+      ${kpi('Comisión Acumulada', money(comisionGanada), 'percent','icon-warn')}
+      ${kpi('Comisión Por Pagar', money(comisionPendiente), 'card','icon-neutral')}
+    </div>
+    <div class="panel">
+      <div class="panel-head"><div class="panel-title">Mis productos apartados</div></div>
+      <div class="table-wrap"><table><thead><tr><th>Producto</th><th>Precio</th><th>Apartado</th><th></th></tr></thead><tbody>
+      ${misApartados.length ? misApartados.map(p=>`<tr><td>${p.nombre}</td><td>${money(p.precio_venta)}</td><td>${timeAgo(p.reservado_en)}</td>
+        <td><button class="btn btn-primary btn-sm" data-action="vender" data-id="${p.id}">Vender</button>
+            <button class="btn btn-secondary btn-sm" data-action="liberar" data-id="${p.id}">Liberar</button></td></tr>`).join('')
+        : `<tr class="empty-row"><td colspan="4">No tienes productos apartados</td></tr>`}
+      </tbody></table></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><div class="panel-title">Mis últimas ventas</div></div>
+      ${renderVentasTable(misVentas.slice(0,6), false)}
+    </div>`;
+};
+
+PAGES['v-catalogo'] = () => {
+  const cur = DB.currentUser();
+  const disponibles = DB.state.productos.filter(p=>p.estado==='en_inventario');
+  const misReservas = DB.state.productos.filter(p=>p.estado==='en_reserva' && p.reservado_por_id===cur.id);
+  const otrasReservas = DB.state.productos.filter(p=>p.estado==='en_reserva' && p.reservado_por_id!==cur.id);
+  return `
+    <div class="toolbar">
+      <input id="catalogoSearch" placeholder="Buscar producto...">
+      <select id="catalogoCategoria"><option value="">Todas las categorías</option>${DB.state.categorias.map(c=>`<option>${c.nombre}</option>`).join('')}</select>
+    </div>
+    <div id="catalogoGrid" class="card-grid">
+      ${[...misReservas, ...disponibles].map(p=>productCard(p,{mode:'vendedor'})).join('') || `<div class="text-faint text-center" style="padding:30px;">No hay productos disponibles</div>`}
+    </div>
+    ${otrasReservas.length ? `<div class="panel mt-16"><div class="panel-title mt-0" style="margin-bottom:12px;">Apartados por otras compañeras</div>
+      <div class="card-grid">${otrasReservas.map(p=>productCard(p,{mode:'vendedor'})).join('')}</div></div>` : ''}
+  `;
+};
+
+// Exclusiva para vistas de vendedora: nunca muestra costo ni ganancia neta
+// (eso revelaría el margen), solo precio de venta y su propia comisión.
+function renderVentasTable(ventas, showVendedor){
+  return `<div class="table-wrap"><table><thead><tr><th>Producto</th>${showVendedor?'<th>Vendedora</th>':''}<th>Fecha</th><th>Precio</th><th>Tu comisión</th><th>Estado</th></tr></thead><tbody>
+  ${ventas.length ? ventas.map(v=>{
+    const vend = DB.state.usuarios.find(u=>u.id===v.vendedor_id);
+    const info = v.estado_venta==='devuelto' ? {label:'Devuelto',cls:'badge-danger'} : {label:v.comision_estado==='pagada'?'Comisión pagada':'Comisión ganada', cls: v.comision_estado==='pagada'?'badge-info':'badge-success'};
+    return `<tr><td>${v.producto_nombre}<div class="text-faint" style="font-size:11px;">${v.producto_codigo}</div></td>
+      ${showVendedor?`<td>${vend?vend.nombre:'—'}</td>`:''}
+      <td>${fmtDateShort(v.fecha_venta)}</td><td>${money(v.precio_venta)}</td><td>${money(v.comision_monto)}</td>
+      <td><span class="badge ${info.cls}">${info.label}</span></td></tr>`;
+  }).join('') : `<tr class="empty-row"><td colspan="${showVendedor?6:5}">Sin ventas registradas</td></tr>`}
+  </tbody></table></div>`;
+}
+
+PAGES['v-ventas'] = () => {
+  const cur = DB.currentUser();
+  const ventas = DB.state.venta_historial.filter(v=>v.vendedor_id===cur.id);
+  return `<div class="panel">${renderVentasTable(ventas,false)}</div>
+  <div class="panel"><div class="panel-title" style="margin-bottom:12px;">Solicitar devolución</div>
+    <div class="table-wrap"><table><thead><tr><th>Producto</th><th>Fecha</th><th>Estado</th><th></th></tr></thead><tbody>
+    ${ventas.filter(v=>v.estado_venta==='vendido').map(v=>{
+      const pend = DB.state.devoluciones.find(d=>d.venta_historial_id===v.id && d.estado==='pendiente');
+      return `<tr><td>${v.producto_nombre}</td><td>${fmtDateShort(v.fecha_venta)}</td><td>${pend?'<span class="badge badge-warning">Solicitud pendiente</span>':'—'}</td>
+        <td>${pend?'':`<button class="btn btn-secondary btn-sm" data-action="solicitar-devolucion" data-id="${v.id}">Solicitar devolución</button>`}</td></tr>`;
+    }).join('') || `<tr class="empty-row"><td colspan="4">No tienes ventas confirmadas</td></tr>`}
+    </tbody></table></div>
+  </div>`;
+};
+
+PAGES['v-comisiones'] = () => {
+  const cur = DB.currentUser();
+  const r = DB.resumenComisiones(cur.id);
+  const pagos = DB.pagosDe(cur.id);
+  return `<div class="kpi-grid">
+    ${kpi('Comisión Pendiente', money(r.pendiente), 'percent','icon-warn')}
+    ${kpi('Comisión Pagada', money(r.pagado), 'card','icon-success')}
+    ${kpi('Total Histórico', money(r.ganado), 'trending','icon-info')}
+  </div>
+  <div class="panel">
+    <div class="panel-title" style="margin-bottom:12px;">Detalle de ventas</div>
+    ${renderVentasTable(r.ventas,false)}
+  </div>
+  <div class="panel">
+    <div class="panel-title" style="margin-bottom:12px;">Pagos que he recibido</div>
+    <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Monto</th><th>Ventas cubiertas</th><th>Notas</th></tr></thead><tbody>
+    ${pagos.length ? pagos.map(p=>`<tr><td>${fmtDate(p.fecha_pago)}</td><td>${money(p.monto_total)}</td><td>${p.ventas_cubiertas.length}</td><td>${p.notas||'—'}</td></tr>`).join('')
+      : `<tr class="empty-row"><td colspan="4">Todavía no has recibido ningún pago</td></tr>`}
+    </tbody></table></div>
+  </div>`;
+};
+
+/* ---------------------------------------------------------------------
+   PÁGINAS — ADMIN
+--------------------------------------------------------------------- */
+PAGES['a-dashboard'] = () => {
+  const productos = DB.state.productos;
+  const inicioMes = new Date(); inicioMes.setDate(1); inicioMes.setHours(0,0,0,0);
+  const ventasMes = DB.state.venta_historial.filter(v=>new Date(v.fecha_venta)>=inicioMes && v.estado_venta==='vendido');
+  const gananciaMes = ventasMes.reduce((s,v)=>s+v.ganancia_neta,0);
+  const comisionesPendientes = DB.state.venta_historial.filter(v=>v.comision_estado==='ganada').reduce((s,v)=>s+v.comision_monto,0);
+  const bitacoraReciente = DB.state.bitacora.slice(0,8);
+  const porVendedor = {};
+  DB.state.venta_historial.filter(v=>v.estado_venta==='vendido').forEach(v=>{ porVendedor[v.vendedor_id]=(porVendedor[v.vendedor_id]||0)+v.comision_monto; });
+  const topVendedorId = Object.keys(porVendedor).sort((a,b)=>porVendedor[b]-porVendedor[a])[0];
+  const topVendedor = topVendedorId ? DB.state.usuarios.find(u=>u.id===topVendedorId) : null;
+  return `
+    <div class="kpi-grid">
+      ${kpi('En Inventario', productos.filter(p=>p.estado==='en_inventario').length,'crate','icon-neutral')}
+      ${kpi('En Reserva', productos.filter(p=>p.estado==='en_reserva').length,'bookmark','icon-warn')}
+      ${kpi('Vendidos Este Mes', ventasMes.length,'box','icon-info')}
+      ${kpi('Ganancia Neta (Mes)', money(gananciaMes),'trending','icon-success')}
+      ${kpi('Comisiones Pendientes', money(comisionesPendientes),'percent','icon-warn')}
+    </div>
+    <div class="form-row">
+      <div class="panel">
+        <div class="panel-title" style="margin-bottom:14px;">Vendedora destacada</div>
+        ${topVendedor ? `<div style="display:flex;align-items:center;gap:14px;">
+          <div class="user-chip .avatar" style="width:48px;height:48px;border-radius:50%;background:var(--color-accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;">${topVendedor.nombre.charAt(0)}</div>
+          <div><div style="font-weight:700;">${topVendedor.nombre}</div><div class="text-muted" style="font-size:12.5px;">${money(porVendedor[topVendedorId])} en comisiones ganadas</div></div>
+        </div>` : `<div class="text-faint">Aún no hay ventas registradas</div>`}
+      </div>
+      <div class="panel">
+        <div class="panel-title" style="margin-bottom:14px;">Actividad reciente</div>
+        ${bitacoraReciente.length ? bitacoraReciente.map(b=>{
+          const u = DB.state.usuarios.find(x=>x.id===b.usuario_id);
+          return `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--color-border);font-size:12.5px;">
+            <span>${b.descripcion||b.tipo_cambio}</span><span class="text-faint">${timeAgo(b.created_at)}</span></div>`;
+        }).join('') : `<div class="text-faint">Sin actividad todavía</div>`}
+      </div>
+    </div>`;
+};
+
+PAGES['a-inventario'] = () => {
+  const productos = DB.state.productos;
+  return `
+    <div class="toolbar">
+      <input id="invSearch" placeholder="Buscar producto o código...">
+      <select id="invCategoria"><option value="">Todas las categorías</option>${DB.state.categorias.map(c=>`<option>${c.nombre}</option>`).join('')}</select>
+      <button class="btn btn-secondary btn-sm" id="btnArchivar" data-tip="Elimina las fotos de los productos vendidos hace más de ${DB.state.configuracion.dias_archivo_productos_vendidos} días">${icon('trash')} Archivar Vendidos</button>
+    </div>
+    <div id="kanbanWrap" class="kanban">
+      ${kanbanColumn('en_inventario','Disponible','var(--forest-600)', productos.filter(p=>p.estado==='en_inventario'),'admin')}
+      ${kanbanColumn('en_reserva','En Reserva','var(--amber-500)', productos.filter(p=>p.estado==='en_reserva'),'admin')}
+      ${kanbanColumn('vendido','Vendido','var(--sage-600)', productos.filter(p=>p.estado==='vendido' && !p.archivado),'admin')}
+      ${productos.some(p=>p.archivado) ? kanbanColumn('archivado','Archivado — sin fotos','var(--coffee-400)', productos.filter(p=>p.archivado),'admin') : ''}
+      ${productos.some(p=>p.estado==='devuelto') ? kanbanColumn('devuelto','Devuelto — requiere revisión','var(--red-600)', productos.filter(p=>p.estado==='devuelto'),'admin') : ''}
+    </div>`;
+};
+
+PAGES['a-nuevo'] = () => `
+  <div class="panel" style="max-width:760px;">
+    <form id="formNuevoProducto">
+      <div class="form-group"><label>Nombre *</label><input id="npNombre" required placeholder="Ej: Bolsa Louis Vuitton"></div>
+      <div class="form-row">
+        <div class="form-group"><label>Categoría</label><select id="npCategoria">
+          <option value="">Sin categoría</option>
+          ${DB.state.categorias.map(c=>`<option value="${c.nombre}">${c.nombre}</option>`).join('')}
+          </select>
+          ${DB.state.categorias.length===0?`<div class="text-faint mt-8" style="font-size:11.5px;">Aún no hay categorías — créalas en <a href="#" onclick="navigate('a-categorias');return false;">Categorías</a></div>`:''}
+        </div>
+        <div class="form-group"><label>Caja / Lote</label><select id="npCaja"><option value="">Sin caja</option>${DB.state.cajas.filter(c=>c.estado==='abierta').map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}</select></div>
+      </div>
+      <div class="form-group"><label>Descripción</label><textarea id="npDescripcion" rows="3" placeholder="Detalles del producto"></textarea></div>
+      <div class="form-row">
+        <div class="form-group"><label>Costo (${DB.state.configuracion.moneda_simbolo}) *</label><input type="number" step="0.01" id="npCosto" required placeholder="0.00"></div>
+        <div class="form-group"><label>Precio de venta (${DB.state.configuracion.moneda_simbolo}) *</label><input type="number" step="0.01" id="npPrecio" required placeholder="0.00"></div>
+      </div>
+      <div class="form-group"><label>% Comisión para quien lo venda</label><input type="number" step="0.01" id="npPorcentaje" value="${DB.state.configuracion.comision_default_porcentaje}"></div>
+      <div class="form-group"><label>Link de video (YouTube / TikTok)</label><input id="npVideo" placeholder="https://youtube.com/watch?v=..."></div>
+      <div class="form-group">
+        <label>Fotos del producto (1 a 5)</label>
+        <div class="photo-drop" id="npDropZone">${icon('image')}<div class="mt-8">Click para subir fotos</div><div class="text-faint" style="font-size:11.5px;">JPG o PNG · máximo 5</div></div>
+        <input type="file" id="npFotos" accept="image/*" multiple hidden>
+        <div class="photo-preview-grid" id="npPreview"></div>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">${icon('plus')} Crear Producto</button>
+    </form>
+  </div>`;
+
+PAGES['a-cajas'] = () => {
+  const cajas = DB.state.cajas;
+  return `
+    <div class="panel-head"><div></div><button class="btn btn-primary" id="btnNuevaCaja">${icon('plus')} Nueva Caja</button></div>
+    <div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Costo Pagado</th><th>Productos</th><th>Vendidos</th><th>Ganancia Realizada</th><th>Estado</th><th></th></tr></thead><tbody>
+    ${cajas.length ? cajas.map(c=>{
+      const prods = DB.productosDeCaja(c.id);
+      const ventas = DB.ventasDeCaja(c.id);
+      const ganancia = ventas.reduce((s,v)=>s+v.ganancia_neta,0);
+      return `<tr><td>${c.nombre}</td><td>${money(c.costo_total_pagado)}</td><td>${prods.length}</td><td>${ventas.length}</td><td>${money(ganancia)}</td>
+        <td><span class="badge ${c.estado==='abierta'?'badge-success':'badge-neutral'}">${c.estado==='abierta'?'Abierta':'Cerrada'}</span></td>
+        <td>${c.estado==='abierta'?`<button class="btn btn-secondary btn-sm" data-action="cerrar-caja" data-id="${c.id}">Cerrar</button>`:''}</td></tr>`;
+    }).join('') : `<tr class="empty-row"><td colspan="7">Sin cajas registradas</td></tr>`}
+    </tbody></table></div>`;
+};
+
+PAGES['a-categorias'] = () => `
+  <div class="panel-head"><div class="text-muted" style="font-size:12.5px;">Con muchos productos, categorías consistentes son lo que mantiene todo ordenable y filtrable.</div>
+    <button class="btn btn-primary" id="btnNuevaCategoria">${icon('plus')} Nueva Categoría</button></div>
+  <div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Productos</th><th></th></tr></thead><tbody>
+  ${DB.state.categorias.length ? DB.state.categorias.map(c=>`<tr><td>${c.nombre}</td><td>${DB.contarProductosPorCategoria(c.nombre)}</td>
+    <td><button class="icon-btn edit" data-action="editar-categoria" data-id="${c.id}">${icon('edit')}</button>
+        <button class="icon-btn delete" data-action="eliminar-categoria" data-id="${c.id}">${icon('trash')}</button></td></tr>`).join('')
+    : `<tr class="empty-row"><td colspan="3">Sin categorías creadas todavía</td></tr>`}
+  </tbody></table></div>`;
+
+PAGES['a-gastos'] = () => `
+  <div class="panel-head"><div></div><button class="btn btn-primary" id="btnNuevoGasto">${icon('plus')} Nuevo Gasto</button></div>
+  <div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Monto</th><th>Tipo</th><th>Activo</th><th></th></tr></thead><tbody>
+  ${DB.state.gastos.map(g=>`<tr><td>${g.nombre}</td><td>${g.tipo==='fijo'?money(g.monto_default):g.monto_default+'%'}</td>
+    <td><span class="badge badge-neutral">${g.tipo==='fijo'?'Monto fijo':'Porcentaje'}</span></td>
+    <td><span class="badge ${g.activo?'badge-success':'badge-danger'}">${g.activo?'Activo':'Inactivo'}</span></td>
+    <td><button class="icon-btn edit" data-action="editar-gasto" data-id="${g.id}">${icon('edit')}</button>
+        <button class="icon-btn delete" data-action="eliminar-gasto" data-id="${g.id}">${icon('trash')}</button></td></tr>`).join('') || `<tr class="empty-row"><td colspan="5">Sin gastos</td></tr>`}
+  </tbody></table></div>`;
+
+PAGES['a-comisiones'] = () => {
+  // Ojo: incluye también usuarios inactivos (eliminados) — si le quedó comisión
+  // pendiente antes de desactivarla, el admin igual debe poder pagársela.
+  const filas = DB.state.usuarios.map(u=>({ u, r: DB.resumenComisiones(u.id) })).filter(x=>x.r.ventas.length>0);
+  const totalPendiente = filas.reduce((s,x)=>s+x.r.pendiente,0);
+  return `
+    <div class="kpi-grid">
+      ${kpi('Pendiente de Pagar (todos)', money(totalPendiente),'card','icon-warn')}
+      ${kpi('Pagado Histórico', money(filas.reduce((s,x)=>s+x.r.pagado,0)),'percent','icon-success')}
+      ${kpi('Vendedoras con Ventas', filas.length,'users','icon-info')}
+    </div>
+    <div class="panel">
+      <div class="panel-title" style="margin-bottom:14px;">Saldo por vendedora</div>
+      <div class="table-wrap"><table><thead><tr><th>Vendedora</th><th>Ganado histórico</th><th>Pagado</th><th>Pendiente</th><th></th></tr></thead><tbody>
+      ${filas.length ? filas.map(({u,r})=>`<tr><td>${u.nombre}<div class="text-faint" style="font-size:11px;">${DB.rolLabel(u)}</div></td>
+        <td>${money(r.ganado)}</td><td>${money(r.pagado)}</td>
+        <td><strong>${money(r.pendiente)}</strong></td>
+        <td>${r.pendiente>0?`<button class="btn btn-primary btn-sm" data-action="pagar-comision" data-id="${u.id}">${icon('check')} Registrar pago</button>`:'<span class="badge badge-success">Al día</span>'}</td></tr>`).join('')
+        : `<tr class="empty-row"><td colspan="5">Todavía no hay ventas registradas</td></tr>`}
+      </tbody></table></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title" style="margin-bottom:14px;">Historial de pagos</div>
+      <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Vendedora</th><th>Monto</th><th>Ventas cubiertas</th><th>Notas</th></tr></thead><tbody>
+      ${DB.state.pagos_comision.length ? DB.state.pagos_comision.map(p=>{
+        const u = DB.state.usuarios.find(x=>x.id===p.vendedor_id);
+        return `<tr><td>${fmtDate(p.fecha_pago)}</td><td>${u?u.nombre:'—'}</td><td>${money(p.monto_total)}</td><td>${p.ventas_cubiertas.length}</td><td>${p.notas||'—'}</td></tr>`;
+      }).join('') : `<tr class="empty-row"><td colspan="5">Todavía no se ha registrado ningún pago</td></tr>`}
+      </tbody></table></div>
+    </div>`;
+};
+
+PAGES['a-devoluciones'] = () => {
+  const devs = DB.state.devoluciones;
+  return `<div class="table-wrap"><table><thead><tr><th>Producto</th><th>Solicitó</th><th>Razón</th><th>Fecha</th><th>Estado</th><th></th></tr></thead><tbody>
+  ${devs.length ? devs.map(d=>{
+    const v = DB.state.venta_historial.find(x=>x.id===d.venta_historial_id);
+    const u = DB.state.usuarios.find(x=>x.id===d.solicitado_por);
+    const cls = d.estado==='pendiente'?'badge-warning':d.estado==='aprobada'?'badge-success':'badge-danger';
+    return `<tr><td>${v?v.producto_nombre:'—'}</td><td>${u?u.nombre:'—'}</td><td>${d.razon}</td><td>${fmtDateShort(d.fecha_solicitud)}</td>
+      <td><span class="badge ${cls}">${d.estado}</span></td>
+      <td>${d.estado==='pendiente'?`<button class="btn btn-primary btn-sm" data-action="aprobar-dev" data-id="${d.id}">Aprobar</button>
+        <button class="btn btn-secondary btn-sm" data-action="rechazar-dev" data-id="${d.id}">Rechazar</button>`:''}</td></tr>`;
+  }).join('') : `<tr class="empty-row"><td colspan="6">Sin solicitudes de devolución</td></tr>`}
+  </tbody></table></div>`;
+};
+
+PAGES['a-usuarios'] = () => `
+  <div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>% Comisión</th><th>Activo</th><th></th></tr></thead><tbody>
+  ${DB.state.usuarios.map(u=>`<tr><td>${u.nombre}</td><td>${u.email}</td><td><span class="badge badge-info">${DB.rolLabel(u)}</span></td>
+    <td>${u.porcentaje_comision_default}%</td><td><span class="badge ${u.activo?'badge-success':'badge-danger'}">${u.activo?'Activo':'Inactivo'}</span></td>
+    <td><div class="icon-actions-row" style="margin-top:0;">
+      <button class="icon-btn edit" data-action="editar-usuario" data-id="${u.id}" data-tip="Editar">${icon('edit')}</button>
+      <button class="icon-btn info" data-action="reset-password" data-id="${u.id}" data-tip="Restablecer contraseña">${icon('key')}</button>
+      ${u.activo
+        ? `<button class="icon-btn delete" data-action="eliminar-usuario" data-id="${u.id}" data-tip="Eliminar">${icon('trash')}</button>`
+        : `<button class="icon-btn confirm" data-action="reactivar-usuario" data-id="${u.id}" data-tip="Reactivar">${icon('undo')}</button>`}
+    </div></td></tr>`).join('')}
+  </tbody></table></div>`;
+
+PAGES['a-bitacora'] = () => `
+  <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Tabla</th><th>Descripción</th></tr></thead><tbody>
+  ${DB.state.bitacora.length ? DB.state.bitacora.slice(0,200).map(b=>{
+    const u = DB.state.usuarios.find(x=>x.id===b.usuario_id);
+    return `<tr><td>${fmtDate(b.created_at)}</td><td>${u?u.nombre:'Sistema'}</td><td><span class="badge badge-neutral">${b.tipo_cambio}</span></td><td>${b.tabla_afectada}</td><td>${b.descripcion||''}</td></tr>`;
+  }).join('') : `<tr class="empty-row"><td colspan="5">Sin actividad registrada</td></tr>`}
+  </tbody></table></div>`;
+
+PAGES['a-config'] = () => {
+  const c = DB.state.configuracion;
+  return `<div class="panel" style="max-width:600px;">
+    <form id="formConfig">
+      <div class="form-group"><label>Símbolo de moneda</label><input id="cfMoneda" value="${c.moneda_simbolo}"></div>
+      <div class="form-group"><label>Días para archivar un producto vendido (elimina solo sus fotos)</label><input type="number" id="cfDias" value="${c.dias_archivo_productos_vendidos}"></div>
+      <div class="form-group"><label>Días para eliminar definitivamente un producto ya archivado</label><input type="number" id="cfDiasEliminar" value="${c.dias_eliminacion_productos_archivados}">
+        <small class="text-faint" style="font-size:11.5px;display:block;margin-top:5px;">El historial de ganancia en Reportes nunca se borra, aunque el producto se elimine.</small></div>
+      <div class="form-group"><label>% de comisión sugerido para productos nuevos</label><input type="number" id="cfComision" value="${c.comision_default_porcentaje}"></div>
+      <div class="form-group" style="display:flex;align-items:center;gap:10px;"><input type="checkbox" id="cfAutoLib" style="width:auto;" ${c.permitir_auto_liberacion?'checked':''}><label class="mb-0">Liberar reservas automáticamente</label></div>
+      <div class="form-group"><label>Horas antes de liberar una reserva</label><input type="number" id="cfHoras" value="${c.tiempo_auto_liberacion_horas}"></div>
+      <button type="submit" class="btn btn-primary">${icon('check')} Guardar Configuración</button>
+    </form>
+  </div>`;
+};
+
+PAGES['a-reportes'] = () => {
+  const ventas = DB.state.venta_historial.filter(v=>v.estado_venta==='vendido');
+  const totalIngresos = ventas.reduce((s,v)=>s+v.precio_venta,0);
+  const totalCostos = ventas.reduce((s,v)=>s+v.costo,0);
+  const totalGastos = ventas.reduce((s,v)=>s+v.gastos_aplicados,0);
+  const totalGanancia = ventas.reduce((s,v)=>s+v.ganancia_neta,0);
+  const totalComisiones = ventas.reduce((s,v)=>s+v.comision_monto,0);
+
+  const porVendedor = {};
+  ventas.forEach(v=>{ porVendedor[v.vendedor_id] = porVendedor[v.vendedor_id] || {count:0,monto:0,comision:0}; porVendedor[v.vendedor_id].count++; porVendedor[v.vendedor_id].monto+=v.precio_venta; porVendedor[v.vendedor_id].comision+=v.comision_monto; });
+
+  const porCategoria = {};
+  ventas.forEach(v=>{ const c=v.categoria||'Sin categoría'; porCategoria[c]=(porCategoria[c]||0)+v.ganancia_neta; });
+
+  const dias = [...Array(14)].map((_,i)=>{ const d=new Date(); d.setDate(d.getDate()-(13-i)); d.setHours(0,0,0,0); return d; });
+  const porDia = dias.map(d=>{ const next=new Date(d); next.setDate(next.getDate()+1); return ventas.filter(v=>{const f=new Date(v.fecha_venta); return f>=d && f<next;}).reduce((s,v)=>s+v.ganancia_neta,0); });
+  const maxDia = Math.max(1, ...porDia);
+
+  return `
+    <div class="kpi-grid">
+      ${kpi('Ingresos Totales', money(totalIngresos),'trending','icon-info')}
+      ${kpi('Costos Totales', money(totalCostos),'box','icon-neutral')}
+      ${kpi('Gastos Aplicados', money(totalGastos),'card','icon-warn')}
+      ${kpi('Ganancia Neta', money(totalGanancia),'percent','icon-success')}
+      ${kpi('Comisiones Totales', money(totalComisiones),'users','icon-info')}
+    </div>
+    <div class="panel">
+      <div class="panel-head"><div class="panel-title">Ganancia neta — últimos 14 días</div>
+        <button class="btn btn-secondary btn-sm" id="btnExportCSV">${icon('download')} Exportar CSV</button></div>
+      <div class="bar-chart">${porDia.map(v=>`<div class="bar" style="height:${Math.max(2,(v/maxDia)*130)}px" data-tip="${money(v)}"></div>`).join('')}</div>
+      <div class="bar-chart-labels">${dias.map(d=>`<span>${d.toLocaleDateString('es-GT',{day:'2-digit',month:'2-digit'})}</span>`).join('')}</div>
+    </div>
+    <div class="form-row">
+      <div class="panel">
+        <div class="panel-title" style="margin-bottom:12px;">Ventas por vendedora</div>
+        <div class="table-wrap"><table><thead><tr><th>Vendedora</th><th>Ventas</th><th>Monto</th><th>Comisión</th></tr></thead><tbody>
+        ${Object.keys(porVendedor).length ? Object.entries(porVendedor).map(([id,d])=>{ const u=DB.state.usuarios.find(x=>x.id===id); return `<tr><td>${u?u.nombre:'—'}</td><td>${d.count}</td><td>${money(d.monto)}</td><td>${money(d.comision)}</td></tr>`; }).join('') : `<tr class="empty-row"><td colspan="4">Sin datos</td></tr>`}
+        </tbody></table></div>
+      </div>
+      <div class="panel">
+        <div class="panel-title" style="margin-bottom:12px;">Ganancia por categoría</div>
+        <div class="table-wrap"><table><thead><tr><th>Categoría</th><th>Ganancia</th></tr></thead><tbody>
+        ${Object.keys(porCategoria).length ? Object.entries(porCategoria).sort((a,b)=>b[1]-a[1]).map(([c,v])=>`<tr><td>${c}</td><td>${money(v)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="2">Sin datos</td></tr>`}
+        </tbody></table></div>
+      </div>
+    </div>`;
+};
+
+/* =====================================================================
+   MODALES
+===================================================================== */
+function openModal(html, size){
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `<div class="modal-overlay" id="modalOverlay"><div class="modal ${size==='lg'?'modal-lg':''}">${html}</div></div>`;
+  const overlay = document.getElementById('modalOverlay');
+  overlay.addEventListener('click', e=>{ if(e.target.id==='modalOverlay') closeModal(); });
+  document.addEventListener('keydown', onModalEscape);
+  // doble rAF: deja pintar el estado inicial (opacity:0, scale:.96) antes de
+  // animar hacia 'open', si no el navegador junta ambos frames y no se ve transición
+  requestAnimationFrame(()=>requestAnimationFrame(()=>overlay.classList.add('open')));
+}
+function onModalEscape(e){ if(e.key==='Escape') closeModal(); }
+function closeModal(){
+  const overlay = document.getElementById('modalOverlay');
+  document.removeEventListener('keydown', onModalEscape);
+  if(!overlay){ document.getElementById('modalRoot').innerHTML=''; return; }
+  overlay.classList.remove('open');
+  setTimeout(()=>{ document.getElementById('modalRoot').innerHTML=''; }, 180);
+}
+
+function modalVerFicha(p){
+  const fotos = DB.fotosDe(p.id,'inventario');
+  const info = estadoInfo(p.estado);
+  const verCosto = DB.isAdmin(); // las vendedoras solo ven precio de venta y su % de comisión, nunca costo/margen
+  openModal(`
+    <div class="modal-head"><div class="modal-title">Ficha del Producto</div><button class="icon-btn" onclick="closeModal()">${icon('x')}</button></div>
+    <div class="modal-body">
+      ${fotos.length?`<div class="public-gallery" style="border-radius:12px;margin-bottom:14px;">${fotos.map(f=>`<img src="${f.url_foto}">`).join('')}</div>`:''}
+      <div class="flex-between"><h3>${p.nombre}</h3><span class="badge ${info.cls}">${info.label}</span></div>
+      <div class="text-faint" style="margin:4px 0 12px;">${p.codigo} · ${p.categoria||'Sin categoría'}</div>
+      ${renderVideoEmbed(p.url_video)}
+      <div class="calc-box">
+        ${verCosto?`<div class="calc-row"><span>Costo</span><span>${money(p.costo)}</span></div>`:''}
+        <div class="calc-row"><span>Precio de venta</span><span>${money(p.precio_venta)}</span></div>
+        ${verCosto?`<div class="calc-row total"><span>Ganancia potencial</span><span>${money(p.precio_venta-p.costo)}</span></div>`:''}
+        <div class="calc-row comision"><span>Comisión (${p.porcentaje_ganancia}%)</span><span>${money(Math.max(p.precio_venta-p.costo,0)*p.porcentaje_ganancia/100)}</span></div>
+      </div>
+      <p class="text-muted mt-16">${p.descripcion||'Sin descripción.'}</p>
+    </div>`);
+}
+
+function modalQR(p){
+  const url = location.origin + location.pathname + '?p=' + p.codigo;
+  openModal(`
+    <div class="modal-head"><div class="modal-title">Código QR — ${p.codigo}</div><button class="icon-btn" onclick="closeModal()">${icon('x')}</button></div>
+    <div class="modal-body qr-box">
+      <div id="qrCanvas"></div>
+      <p class="text-muted mt-16" style="word-break:break-all;">${url}</p>
+      <button class="btn btn-secondary btn-sm mt-8" id="btnCopyQR">Copiar enlace</button>
+    </div>`);
+  setTimeout(()=>{
+    if(window.QRCode) new QRCode(document.getElementById('qrCanvas'), { text:url, width:220, height:220, colorDark:'#0F172A', colorLight:'#ffffff' });
+    document.getElementById('btnCopyQR')?.addEventListener('click', ()=>{ navigator.clipboard?.writeText(url); toast('Enlace copiado'); });
+  },0);
+}
+
+function modalEditarProducto(p){
+  openModal(`
+    <div class="modal-head"><div class="modal-title">Editar Producto</div><button class="icon-btn" onclick="closeModal()">${icon('x')}</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label>Nombre</label><input id="epNombre" value="${p.nombre}"></div>
+      <div class="form-row">
+        <div class="form-group"><label>Categoría</label><select id="epCategoria">
+          <option value="">Sin categoría</option>
+          ${DB.state.categorias.map(c=>`<option value="${c.nombre}" ${p.categoria===c.nombre?'selected':''}>${c.nombre}</option>`).join('')}
+          </select></div>
+        <div class="form-group"><label>% Comisión</label><input type="number" id="epPorcentaje" value="${p.porcentaje_ganancia}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Costo</label><input type="number" step="0.01" id="epCosto" value="${p.costo}"></div>
+        <div class="form-group"><label>Precio de venta</label><input type="number" step="0.01" id="epPrecio" value="${p.precio_venta}"></div>
+      </div>
+      <div class="form-group"><label>Video</label><input id="epVideo" value="${p.url_video||''}"></div>
+      <div class="form-group"><label>Descripción</label><textarea id="epDescripcion" rows="3">${p.descripcion||''}</textarea></div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="btnGuardarEdit">Guardar cambios</button></div>`);
+  document.getElementById('btnGuardarEdit').addEventListener('click', async ()=>{
+    const res = await DB.editarProducto(p.id, {
+      nombre: document.getElementById('epNombre').value,
+      categoria: document.getElementById('epCategoria').value || null,
+      porcentaje_ganancia: Number(document.getElementById('epPorcentaje').value),
+      costo: Number(document.getElementById('epCosto').value),
+      precio_venta: Number(document.getElementById('epPrecio').value),
+      url_video: document.getElementById('epVideo').value,
+      descripcion: document.getElementById('epDescripcion').value
+    });
+    if(res.ok){ toast('Producto actualizado','success'); closeModal(); await refresh(); }
+    else toast('No se pudo actualizar: '+res.error,'danger');
+  });
+}
+
+function modalVender(p){
+  const gastosActivos = DB.state.gastos.filter(g=>g.activo);
+  const verCosto = DB.isAdmin(); // las vendedoras solo ven precio de venta y su comisión, nunca el costo/margen
+  const esAdmin = DB.isAdmin();
+  const pctComision = esAdmin ? 100 : p.porcentaje_ganancia; // el admin se queda con el 100%: es su propio negocio
+  const calcTotal = () => {
+    let total = 0;
+    document.querySelectorAll('.gasto-check').forEach(chk=>{ if(chk.checked) total += Number(document.querySelector(`.gasto-monto[data-id="${chk.dataset.id}"]`).value)||0; });
+    const ganancia = p.precio_venta - p.costo - total;
+    const comision = Math.max(ganancia,0)*pctComision/100;
+    document.getElementById('ventaGastosTotal').textContent = money(total);
+    if(verCosto) document.getElementById('ventaGanancia').textContent = money(ganancia);
+    document.getElementById('ventaComision').textContent = money(comision);
+  };
+  openModal(`
+    <div class="modal-head"><div class="modal-title">Vender: ${p.nombre}</div><button class="icon-btn" onclick="closeModal()">${icon('x')}</button></div>
+    <div class="modal-body">
+      <p class="text-muted mb-0">Selecciona los gastos que aplican a esta venta (puedes ajustar el monto).</p>
+      <div class="mt-16">
+      ${gastosActivos.length ? gastosActivos.map(g=>{
+        const monto = g.tipo==='porcentaje' ? (p.precio_venta*g.monto_default/100).toFixed(2) : g.monto_default;
+        return `<div class="gasto-row"><input type="checkbox" class="gasto-check" data-id="${g.id}" data-nombre="${g.nombre}">
+          <span class="g-name">${g.nombre} ${g.tipo==='porcentaje'?`(${g.monto_default}%)`:''}</span>
+          <input type="number" class="gasto-monto" data-id="${g.id}" value="${monto}" step="0.01"></div>`;
+      }).join('') : `<div class="text-faint">No hay gastos configurados</div>`}
+      </div>
+      <div class="calc-box">
+        <div class="calc-row"><span>Precio de venta</span><span>${money(p.precio_venta)}</span></div>
+        ${verCosto ? `<div class="calc-row"><span>Costo</span><span>-${money(p.costo)}</span></div>` : ''}
+        <div class="calc-row"><span>Gastos aplicados</span><span id="ventaGastosTotal">-${money(0)}</span></div>
+        ${verCosto ? `<div class="calc-row total"><span>Ganancia neta</span><span id="ventaGanancia">${money(p.precio_venta-p.costo)}</span></div>` : ''}
+        <div class="calc-row comision"><span>${esAdmin?'Tu ganancia (100%)':'Tu comisión ('+pctComision+'%)'}</span><span id="ventaComision">${money(Math.max(p.precio_venta-p.costo,0)*pctComision/100)}</span></div>
+      </div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="btnConfirmarVenta">${icon('check')} Confirmar Venta</button></div>`);
+  document.querySelectorAll('.gasto-check, .gasto-monto').forEach(el=>el.addEventListener('input', calcTotal));
+  document.getElementById('btnConfirmarVenta').addEventListener('click', async ()=>{
+    const gastos = [];
+    document.querySelectorAll('.gasto-check').forEach(chk=>{ if(chk.checked) gastos.push({ gasto_id:chk.dataset.id, nombre:chk.dataset.nombre, monto:Number(document.querySelector(`.gasto-monto[data-id="${chk.dataset.id}"]`).value)||0 }); });
+    const btnV = document.getElementById('btnConfirmarVenta'); btnV.disabled = true;
+    const res = await DB.venderProducto(p.id, gastos);
+    if(res.ok){ toast('¡Venta registrada! Ganaste '+money(res.data.comision_monto),'success'); closeModal(); await refresh(); }
+    else { toast('No se pudo vender: '+(res.error==='PRODUCTO_NO_DISPONIBLE'?'otra persona ya lo tomó':res.error),'danger'); closeModal(); await refresh(); }
+  });
+}
+
+function modalNuevaCaja(){
+  openModal(`
+    <div class="modal-head"><div class="modal-title">Nueva Caja</div><button class="icon-btn" onclick="closeModal()">${icon('x')}</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label>Nombre *</label><input id="ncNombre" placeholder="Ej: Caja Octubre #1"></div>
+      <div class="form-group"><label>Costo total pagado</label><input type="number" step="0.01" id="ncCosto" placeholder="0.00"></div>
+      <div class="form-group"><label>Notas</label><textarea id="ncNotas" rows="2"></textarea></div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="btnGuardarCaja">Crear</button></div>`);
+  document.getElementById('btnGuardarCaja').addEventListener('click', async ()=>{
+    const nombre = document.getElementById('ncNombre').value.trim();
+    if(!nombre) return toast('El nombre es obligatorio','danger');
+    const res = await DB.crearCaja({ nombre, costo_total_pagado:document.getElementById('ncCosto').value, notas:document.getElementById('ncNotas').value });
+    if(res.ok){ toast('Caja creada','success'); closeModal(); await refresh(); }
+    else toast('No se pudo crear: '+res.error,'danger');
+  });
+}
+
+function modalPersonalizarColor(){
+  const user = DB.currentUser();
+  const actualBase = (user.color_tema && user.color_tema.base) || '#BE8A8A';
+  openModal(`
+    <div class="modal-head"><div class="modal-title">${icon('palette')} Personaliza tus colores</div><button class="icon-btn" onclick="closeModal()">${icon('x')}</button></div>
+    <div class="modal-body">
+      <p class="text-muted mb-0">Elige el acento con el que quieres ver tu panel. Solo te afecta a ti — el resto del equipo sigue viendo el suyo.</p>
+      <div class="theme-swatch-grid mt-16">
+        ${THEME_PRESETS.map(p=>`<button type="button" class="theme-swatch ${p.base.toLowerCase()===actualBase.toLowerCase()?'active':''}" data-base="${p.base}" data-dark="${p.dark}" style="--swatch:${p.base}" data-tip="${p.name}"></button>`).join('')}
+      </div>
+      <div class="form-group mt-16">
+        <label>O elige un color libre</label>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <input type="color" id="temaColorLibre" value="${actualBase}" style="width:46px;height:38px;padding:2px;">
+          <span class="text-muted" style="font-size:12.5px;">Se calculará automáticamente una versión oscura para hover y buen contraste de texto.</span>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" id="btnResetTema">Usar el color de La Cabaña</button>
+      <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" id="btnGuardarTema">${icon('check')} Guardar</button>
+    </div>`);
+  let elegido = { base: actualBase, dark: darkenHex(actualBase) };
+  document.querySelectorAll('.theme-swatch').forEach(btn=>btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.theme-swatch').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    elegido = { base: btn.dataset.base, dark: btn.dataset.dark };
+    document.getElementById('temaColorLibre').value = btn.dataset.base;
+  }));
+  document.getElementById('temaColorLibre').addEventListener('input', e=>{
+    document.querySelectorAll('.theme-swatch').forEach(b=>b.classList.remove('active'));
+    elegido = { base: e.target.value, dark: darkenHex(e.target.value) };
+  });
+  document.getElementById('btnResetTema').addEventListener('click', async ()=>{
+    const res = await DB.actualizarColorTema(user.id, null);
+    if(res.ok){ applyUserTheme(DB.currentUser()); toast('Volviste al color de La Cabaña','success'); closeModal(); }
+    else toast('No se pudo guardar: '+res.error,'danger');
+  });
+  document.getElementById('btnGuardarTema').addEventListener('click', async ()=>{
+    const res = await DB.actualizarColorTema(user.id, elegido);
+    if(res.ok){ applyUserTheme(DB.currentUser()); toast('¡Colores personalizados!','success'); closeModal(); }
+    else toast('No se pudo guardar: '+res.error,'danger');
+  });
+}
+
+function modalCategoria(categoria){
+  const edit = !!categoria;
+  openModal(`
+    <div class="modal-head"><div class="modal-title">${edit?'Editar':'Nueva'} Categoría</div><button class="icon-btn" onclick="closeModal()">${icon('x')}</button></div>
+    <div class="modal-body"><div class="form-group"><label>Nombre *</label><input id="catNombre" value="${edit?categoria.nombre:''}" placeholder="Ej: Bolsas, Relojes, Ropa..."></div></div>
+    <div class="modal-foot"><button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="btnGuardarCategoria">${edit?'Guardar':'Crear'}</button></div>`);
+  document.getElementById('btnGuardarCategoria').addEventListener('click', async ()=>{
+    const nombre = document.getElementById('catNombre').value;
+    const res = edit ? await DB.editarCategoria(categoria.id, nombre) : await DB.crearCategoria(nombre);
+    if(!res.ok) return toast(res.error==='YA_EXISTE'?'Ya existe una categoría con ese nombre':(res.error==='NOMBRE_VACIO'?'Escribe un nombre':res.error),'danger');
+    toast('Categoría guardada','success'); closeModal(); await refresh();
+  });
+}
+
+function modalGasto(gasto){
+  const edit = !!gasto;
+  openModal(`
+    <div class="modal-head"><div class="modal-title">${edit?'Editar':'Nuevo'} Gasto</div><button class="icon-btn" onclick="closeModal()">${icon('x')}</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label>Nombre *</label><input id="gNombre" value="${edit?gasto.nombre:''}" placeholder="Ej: Gastos de envío"></div>
+      <div class="form-row">
+        <div class="form-group"><label>Tipo</label><select id="gTipo"><option value="fijo" ${edit&&gasto.tipo==='fijo'?'selected':''}>Monto fijo</option><option value="porcentaje" ${edit&&gasto.tipo==='porcentaje'?'selected':''}>Porcentaje del precio</option></select></div>
+        <div class="form-group"><label>Monto por defecto</label><input type="number" step="0.01" id="gMonto" value="${edit?gasto.monto_default:''}"></div>
+      </div>
+      <div class="form-group" style="display:flex;align-items:center;gap:10px;"><input type="checkbox" id="gActivo" style="width:auto;" ${!edit||gasto.activo?'checked':''}><label class="mb-0">Activo</label></div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="btnGuardarGasto">${edit?'Guardar':'Crear'}</button></div>`);
+  document.getElementById('btnGuardarGasto').addEventListener('click', async ()=>{
+    const data = { nombre:document.getElementById('gNombre').value.trim(), tipo:document.getElementById('gTipo').value, monto_default:Number(document.getElementById('gMonto').value)||0, activo:document.getElementById('gActivo').checked };
+    if(!data.nombre) return toast('El nombre es obligatorio','danger');
+    const res = edit ? await DB.editarGasto(gasto.id, data) : await DB.crearGasto(data);
+    if(!res.ok) return toast('No se pudo guardar: '+res.error,'danger');
+    toast('Gasto guardado','success'); closeModal(); await refresh();
+  });
+}
+
+// Solo edita usuarios que YA existen (creados por el trigger de Supabase al
+// darlos de alta en Authentication > Users). El panel nunca crea usuarios.
+function modalUsuario(usuario){
+  openModal(`
+    <div class="modal-head"><div class="modal-title">Editar Usuario</div><button class="icon-btn" onclick="closeModal()">${icon('x')}</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label>Nombre *</label><input id="uNombre" value="${usuario.nombre}"></div>
+      <div class="form-group"><label>Email</label><input type="email" id="uEmail" value="${usuario.email}" disabled></div>
+      <div class="form-row">
+        <div class="form-group"><label>Rol</label><select id="uRol"><option value="vendedor" ${usuario.rol==='vendedor'?'selected':''}>Vendedor/a</option><option value="administrador" ${usuario.rol==='administrador'?'selected':''}>Administrador/a</option></select></div>
+        <div class="form-group"><label>Género</label><select id="uGenero"><option value="F" ${usuario.genero==='F'?'selected':''}>Femenino</option><option value="M" ${usuario.genero==='M'?'selected':''}>Masculino</option></select></div>
+      </div>
+      <div class="form-group"><label>% Comisión por defecto</label><input type="number" id="uComision" value="${usuario.porcentaje_comision_default}"></div>
+      <div class="form-group" style="display:flex;align-items:center;gap:10px;"><input type="checkbox" id="uActivo" style="width:auto;" ${usuario.activo?'checked':''}><label class="mb-0">Activo</label></div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="btnGuardarUsuario">Guardar</button></div>`);
+  document.getElementById('btnGuardarUsuario').addEventListener('click', async ()=>{
+    const data = { nombre:document.getElementById('uNombre').value.trim(), rol:document.getElementById('uRol').value, genero:document.getElementById('uGenero').value, porcentaje_comision_default:Number(document.getElementById('uComision').value)||10, activo:document.getElementById('uActivo').checked };
+    if(!data.nombre) return toast('El nombre es obligatorio','danger');
+    const res = await DB.editarUsuario(usuario.id, data);
+    if(!res.ok) return toast('No se pudo guardar: '+res.error,'danger');
+    toast('Usuario guardado','success'); closeModal(); await refresh();
+  });
+}
+
+function modalDevolucion(ventaId){
+  openModal(`
+    <div class="modal-head"><div class="modal-title">Solicitar Devolución</div><button class="icon-btn" onclick="closeModal()">${icon('x')}</button></div>
+    <div class="modal-body"><div class="form-group"><label>Razón *</label><textarea id="devRazon" rows="3" placeholder="Explica el motivo de la devolución"></textarea></div></div>
+    <div class="modal-foot"><button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="btnEnviarDev">Enviar solicitud</button></div>`);
+  document.getElementById('btnEnviarDev').addEventListener('click', async ()=>{
+    const razon = document.getElementById('devRazon').value.trim();
+    if(!razon) return toast('Escribe una razón','danger');
+    const res = await DB.solicitarDevolucion(ventaId, razon);
+    if(!res.ok) return toast('No se pudo enviar: '+res.error,'danger');
+    toast('Solicitud enviada','success'); closeModal(); await refresh();
+  });
+}
+
+function modalPagarComision(vendedorId){
+  const u = DB.state.usuarios.find(x=>x.id===vendedorId);
+  const pendientes = DB.ventasPendientesDePago(vendedorId);
+  const calcTotal = () => {
+    let total = 0;
+    document.querySelectorAll('.venta-check').forEach(chk=>{ if(chk.checked) total += Number(chk.dataset.monto); });
+    document.getElementById('pagoTotal').textContent = money(total);
+    document.getElementById('btnConfirmarPago').disabled = total<=0;
+  };
+  openModal(`
+    <div class="modal-head"><div class="modal-title">Registrar pago — ${u.nombre}</div><button class="icon-btn" onclick="closeModal()">${icon('x')}</button></div>
+    <div class="modal-body">
+      <p class="text-muted mb-0">Selecciona las ventas que estás pagando ahora. Puedes pagar todo o solo una parte; el resto se queda pendiente.</p>
+      <div class="mt-16">
+      ${pendientes.map(v=>`<div class="gasto-row"><input type="checkbox" class="venta-check" data-monto="${v.comision_monto}" checked>
+        <span class="g-name">${v.producto_nombre} <span class="text-faint">· ${fmtDateShort(v.fecha_venta)}</span></span>
+        <strong>${money(v.comision_monto)}</strong></div>`).join('')}
+      </div>
+      <div class="form-group mt-16"><label>Notas (opcional)</label><input id="pagoNotas" placeholder="Ej: Pago de quincena, transferencia BAC..."></div>
+      <div class="calc-box">
+        <div class="calc-row total"><span>Total a pagar</span><span id="pagoTotal">${money(pendientes.reduce((s,v)=>s+v.comision_monto,0))}</span></div>
+      </div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="btnConfirmarPago">${icon('check')} Registrar Pago</button></div>`);
+  document.querySelectorAll('.venta-check').forEach(el=>el.addEventListener('change', calcTotal));
+  document.getElementById('btnConfirmarPago').addEventListener('click', async ()=>{
+    const ids = [];
+    document.querySelectorAll('.venta-check').forEach((chk,i)=>{ if(chk.checked) ids.push(pendientes[i].id); });
+    if(!ids.length) return toast('Selecciona al menos una venta','danger');
+    const res = await DB.registrarPagoComision(vendedorId, ids, document.getElementById('pagoNotas').value.trim());
+    if(res.ok){ toast('Pago de '+money(res.data.monto_total)+' registrado','success'); closeModal(); await refresh(); }
+    else toast('No se pudo registrar: '+res.error,'danger');
+  });
+}
+
+/* =====================================================================
+   EVENTOS POR PÁGINA (delegación central abajo se encarga de [data-action])
+===================================================================== */
+function bindPageEvents(page){
+  if(page==='a-nuevo'){
+    let fotosBuffer = [];
+    const dz = document.getElementById('npDropZone'), input = document.getElementById('npFotos');
+    dz.addEventListener('click', ()=>input.click());
+    input.addEventListener('change', e=>{
+      const files = [...e.target.files].slice(0, 5-fotosBuffer.length);
+      fotosBuffer.push(...files);
+      renderPreview();
+    });
+    function renderPreview(){
+      document.getElementById('npPreview').innerHTML = fotosBuffer.map((f,i)=>`<div class="photo-preview"><img src="${URL.createObjectURL(f)}"><button data-i="${i}">${icon('x')}</button></div>`).join('');
+      document.querySelectorAll('#npPreview button').forEach(b=>b.addEventListener('click', ()=>{ fotosBuffer.splice(Number(b.dataset.i),1); renderPreview(); }));
+    }
+    document.getElementById('formNuevoProducto').addEventListener('submit', async e=>{
+      e.preventDefault();
+      const nombre = document.getElementById('npNombre').value.trim();
+      const costo = document.getElementById('npCosto').value, precio = document.getElementById('npPrecio').value;
+      if(!nombre || !costo || !precio) return toast('Completa los campos obligatorios','danger');
+      const btn = e.target.querySelector('button[type=submit]');
+      const btnHtml = btn.innerHTML;
+      btn.disabled = true; btn.textContent = 'Creando...';
+      const res = await DB.crearProducto({
+        nombre, categoria: document.getElementById('npCategoria').value, caja_id: document.getElementById('npCaja').value||null,
+        descripcion: document.getElementById('npDescripcion').value, costo, precio_venta: precio,
+        porcentaje_ganancia: document.getElementById('npPorcentaje').value, url_video: document.getElementById('npVideo').value
+      }, fotosBuffer);
+      if(res.ok){ toast('Producto creado','success'); await DB.fetchAll(); navigate('a-inventario'); }
+      else { toast('No se pudo crear: '+res.error,'danger'); btn.disabled = false; btn.innerHTML = btnHtml; }
+    });
+  }
+  if(page==='v-catalogo'){
+    const search = document.getElementById('catalogoSearch'), cat = document.getElementById('catalogoCategoria');
+    const filtrar = ()=>{
+      const q = search.value.toLowerCase(), c = cat.value;
+      document.querySelectorAll('#catalogoGrid .product-card').forEach(card=>{
+        const name = card.querySelector('.name').textContent.toLowerCase();
+        const catTxt = card.querySelector('.cat').textContent;
+        card.style.display = (name.includes(q) && (!c||catTxt===c)) ? '' : 'none';
+      });
+    };
+    search.addEventListener('input', filtrar); cat.addEventListener('change', filtrar);
+  }
+  if(page==='a-inventario'){
+    const search = document.getElementById('invSearch'), cat = document.getElementById('invCategoria');
+    const filtrar = ()=>{
+      const q = search.value.toLowerCase(), c = cat.value;
+      document.querySelectorAll('#kanbanWrap .product-card').forEach(card=>{
+        const name = card.querySelector('.name').textContent.toLowerCase();
+        const catTxt = card.querySelector('.cat').textContent;
+        card.style.display = (name.includes(q) && (!c||catTxt===c)) ? '' : 'none';
+      });
+    };
+    search.addEventListener('input', filtrar); cat.addEventListener('change', filtrar);
+    document.getElementById('btnArchivar').addEventListener('click', async ()=>{
+      const n = await DB.archivarVendidos();
+      toast(n ? 'Fotos eliminadas de '+n+' producto(s) vendido(s)' : 'No hay productos vendidos listos para archivar todavía', n?'success':'');
+      await refresh();
+    });
+  }
+  if(page==='a-cajas') document.getElementById('btnNuevaCaja').addEventListener('click', modalNuevaCaja);
+  if(page==='a-categorias') document.getElementById('btnNuevaCategoria').addEventListener('click', ()=>modalCategoria(null));
+  if(page==='a-gastos') document.getElementById('btnNuevoGasto').addEventListener('click', ()=>modalGasto(null));
+  if(page==='a-config'){
+    document.getElementById('formConfig').addEventListener('submit', async e=>{
+      e.preventDefault();
+      const res = await DB.guardarConfiguracion({
+        moneda_simbolo: document.getElementById('cfMoneda').value || 'Q',
+        dias_archivo_productos_vendidos: Number(document.getElementById('cfDias').value)||3,
+        dias_eliminacion_productos_archivados: Number(document.getElementById('cfDiasEliminar').value)||30,
+        comision_default_porcentaje: Number(document.getElementById('cfComision').value)||10,
+        permitir_auto_liberacion: document.getElementById('cfAutoLib').checked,
+        tiempo_auto_liberacion_horas: Number(document.getElementById('cfHoras').value)||24
+      });
+      if(res.ok) toast('Configuración guardada','success'); else toast('No se pudo guardar: '+res.error,'danger');
+    });
+  }
+  if(page==='a-reportes'){
+    document.getElementById('btnExportCSV').addEventListener('click', exportCSV);
+  }
+}
+
+function exportCSV(){
+  const rows = [['Producto','Código','Categoría','Vendedor','Fecha','Costo','Precio','Gastos','Ganancia','Comisión','Estado']];
+  DB.state.venta_historial.forEach(v=>{
+    const u = DB.state.usuarios.find(x=>x.id===v.vendedor_id);
+    rows.push([v.producto_nombre, v.producto_codigo, v.categoria||'', u?u.nombre:'', fmtDateShort(v.fecha_venta), v.costo, v.precio_venta, v.gastos_aplicados, v.ganancia_neta, v.comision_monto, v.estado_venta]);
+  });
+  const csv = rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'reporte_ventas.csv'; a.click();
+}
+
+/* ---------------------------------------------------------------------
+   Delegación central de [data-action] (apartar / vender / liberar / ver / etc.)
+--------------------------------------------------------------------- */
+document.getElementById('mainContent').addEventListener('click', async e=>{
+  const btn = e.target.closest('[data-action]'); if(!btn) return;
+  const action = btn.dataset.action, id = btn.dataset.id;
+  const p = () => DB.state.productos.find(x=>x.id===id);
+  if(action==='apartar'){ const r=await DB.apartarProducto(id); if(r.ok) toast('Producto apartado','success'); else toast(r.error==='PRODUCTO_NO_DISPONIBLE'?'Ya no está disponible':'No se pudo apartar: '+r.error,'danger'); await refresh(); }
+  else if(action==='liberar'){ const r=await DB.liberarProducto(id); if(r.ok) toast('Reserva liberada','success'); else toast('No se pudo liberar: '+r.error,'danger'); await refresh(); }
+  else if(action==='vender'){ const prod=p(); if(prod) modalVender(prod); }
+  else if(action==='ver'){ const prod=p(); if(prod) modalVerFicha(prod); }
+  else if(action==='editar'){ const prod=p(); if(prod) modalEditarProducto(prod); }
+  else if(action==='eliminar'){ if(confirm('¿Eliminar este producto?')){ const r=await DB.eliminarProducto(id); if(r.ok){ toast('Producto eliminado','success'); await refresh(); } else toast('No se pudo eliminar: '+r.error,'danger'); } }
+  else if(action==='reingresar'){ const r=await DB.reingresarProducto(id); if(r.ok){ toast('Producto reingresado a inventario','success'); await refresh(); } }
+  else if(action==='qr'){ const prod=p(); if(prod) modalQR(prod); }
+  else if(action==='cerrar-caja'){ if(confirm('¿Cerrar esta caja?')){ const r=await DB.cerrarCaja(id); if(r.ok){ toast('Caja cerrada','success'); await refresh(); } else toast('No se pudo cerrar: '+r.error,'danger'); } }
+  else if(action==='editar-categoria'){ modalCategoria(DB.state.categorias.find(c=>c.id===id)); }
+  else if(action==='eliminar-categoria'){ if(confirm('¿Eliminar esta categoría? Los productos que la usan conservan el nombre.')){ const r=await DB.eliminarCategoria(id); if(r.ok){ toast('Categoría eliminada','success'); await refresh(); } else toast('No se pudo eliminar: '+r.error,'danger'); } }
+  else if(action==='editar-gasto'){ modalGasto(DB.state.gastos.find(g=>g.id===id)); }
+  else if(action==='eliminar-gasto'){ if(confirm('¿Eliminar este gasto?')){ const r=await DB.eliminarGasto(id); if(r.ok){ toast('Gasto eliminado','success'); await refresh(); } else toast('No se pudo eliminar: '+r.error,'danger'); } }
+  else if(action==='editar-usuario'){ modalUsuario(DB.state.usuarios.find(u=>u.id===id)); }
+  else if(action==='reset-password'){
+    const u = DB.state.usuarios.find(x=>x.id===id);
+    if(confirm('¿Enviar un correo de restablecimiento de contraseña a '+u.email+'?')){
+      const { error } = await sb.auth.resetPasswordForEmail(u.email);
+      if(error) toast('No se pudo enviar el correo: '+error.message,'danger');
+      else toast('Correo de restablecimiento enviado a '+u.email,'success');
+    }
+  }
+  else if(action==='eliminar-usuario'){
+    const u = DB.state.usuarios.find(x=>x.id===id);
+    if(confirm('¿Eliminar a '+u.nombre+'? No podrá iniciar sesión ni se le podrán asignar productos nuevos, pero sus ventas y comisiones ya generadas se conservan intactas en Reportes.')){
+      const r = await DB.editarUsuario(id, { activo:false });
+      if(r.ok){ toast(u.nombre+' fue eliminada del panel (su historial se conserva)','success'); await refresh(); }
+      else toast('No se pudo desactivar: '+r.error,'danger');
+    }
+  }
+  else if(action==='reactivar-usuario'){
+    const u = DB.state.usuarios.find(x=>x.id===id);
+    const r = await DB.editarUsuario(id, { activo:true });
+    if(r.ok){ toast(u.nombre+' fue reactivada','success'); await refresh(); }
+    else toast('No se pudo reactivar: '+r.error,'danger');
+  }
+  else if(action==='solicitar-devolucion'){ modalDevolucion(id); }
+  else if(action==='pagar-comision'){ modalPagarComision(id); }
+  else if(action==='aprobar-dev'){ const r=await DB.resolverDevolucion(id,true); if(r.ok){ toast('Devolución aprobada','success'); await refresh(); } else toast('No se pudo: '+r.error,'danger'); }
+  else if(action==='rechazar-dev'){ const r=await DB.resolverDevolucion(id,false); if(r.ok){ toast('Devolución rechazada'); await refresh(); } else toast('No se pudo: '+r.error,'danger'); }
+  else if(action==='toggle-seccion'){ const key=btn.dataset.key; if(expandedSections.has(key)) expandedSections.delete(key); else expandedSections.add(key); navigate(currentPage); }
+});
+
+/* =====================================================================
+   TOPBAR: notificaciones + menú de usuario
+===================================================================== */
+function refreshBadges(){
+  const cur = DB.currentUser(); if(!cur) return;
+  const sinLeer = DB.state.notificaciones.filter(n=>n.usuario_id===cur.id && !n.leida);
+  document.getElementById('bellDot').hidden = sinLeer.length===0;
+}
+function buildNotifDropdown(){
+  const cur = DB.currentUser();
+  const mias = DB.state.notificaciones.filter(n=>n.usuario_id===cur.id).slice(0,20);
+  const dd = document.getElementById('notifDropdown');
+  dd.innerHTML = `<div class="dropdown-label" style="display:flex;justify-content:space-between;align-items:center;padding-right:14px;">Notificaciones ${mias.length?`<button class="btn-ghost" style="border:none;background:none;color:var(--color-accent);cursor:pointer;font-size:11px;" id="btnMarcarLeidas">Marcar todas leídas</button>`:''}</div>
+    ${mias.length ? mias.map(n=>`<div class="notif-item ${n.leida?'':'unread'}" data-id="${n.id}"><span class="dot" style="${n.leida?'background:transparent':''}"></span><div class="txt"><div class="t">${n.titulo}</div><div class="d">${n.descripcion||''}</div><div class="ts">${timeAgo(n.created_at)}</div></div></div>`).join('') : `<div style="padding:20px;text-align:center;color:var(--color-text-faint);font-size:12.5px;">Sin notificaciones</div>`}`;
+  dd.querySelectorAll('.notif-item').forEach(el=>el.addEventListener('click', async ()=>{ await DB.marcarNotificacionLeida(el.dataset.id); refreshBadges(); buildNotifDropdown(); }));
+  document.getElementById('btnMarcarLeidas')?.addEventListener('click', async ()=>{ await DB.marcarTodasLeidas(cur.id); refreshBadges(); buildNotifDropdown(); });
+}
+function buildUserDropdown(){
+  const dd = document.getElementById('userDropdown');
+  dd.innerHTML = `<div class="dropdown-label">Mi cuenta</div>
+    <button class="dropdown-item" id="ddTema">${icon('palette')} Personalizar colores</button>
+    <div class="dropdown-item" id="ddLogout">${icon('logout')} Cerrar sesión</div>`;
+  document.getElementById('ddTema').addEventListener('click', ()=>{ setDropdownOpen(dd,false); modalPersonalizarColor(); });
+  document.getElementById('ddLogout').addEventListener('click', async ()=>{ await DB.logout(); location.reload(); });
+}
+
+/* =====================================================================
+   PÁGINA PÚBLICA (QR / link de video sin login)
+===================================================================== */
+async function renderPublicPage(codigo){
+  document.getElementById('loginScreen').hidden = true;
+  document.getElementById('appShell').hidden = true;
+  const root = document.getElementById('publicPage');
+  root.hidden = false;
+  root.innerHTML = `<div class="text-center text-faint" style="padding:60px 0;">Cargando…</div>`;
+  const { data:p } = await sb.from('vista_producto_publico').select('*').eq('codigo', codigo).maybeSingle();
+  sb.from('escaneos_qr').insert({ producto_codigo: codigo, dispositivo: /Mobi/i.test(navigator.userAgent)?'mobile':'desktop' });
+  if(!p){
+    root.innerHTML = `<div class="public-card"><div class="public-body text-center">
+      <h2>Producto no disponible</h2><p class="text-muted mt-8">Este producto ya no está en el catálogo (fue vendido y archivado, o el código no existe).</p>
+    </div></div>`;
+    return;
+  }
+  const fotos = p.fotos || [];
+  const info = estadoInfo(p.estado);
+  root.innerHTML = `<div class="public-card">
+    ${fotos.length?`<div class="public-gallery">${fotos.map(url=>`<img src="${url}">`).join('')}</div>`:''}
+    <div class="public-body">
+      <div class="flex-between"><h2>${p.nombre}</h2><span class="badge ${info.cls}">${info.label}</span></div>
+      <div class="text-faint mt-8">${p.categoria||''}</div>
+      ${renderVideoEmbed(p.url_video)}
+      <div style="font-size:26px;font-weight:800;margin:8px 0;">Q ${Number(p.precio_venta).toFixed(2)}</div>
+      <p class="text-muted">${p.descripcion||'Sin descripción disponible.'}</p>
+    </div>
+  </div>`;
+}
+
+/* =====================================================================
+   BOOT
+===================================================================== */
+async function boot(){
+  const { data:{ session } } = await sb.auth.getSession();
+  if(!session){ showLogin(); return; }
+  DB.authUserId = session.user.id;
+  await DB.fetchAll();
+  const cur = DB.currentUser();
+  if(!cur || !cur.activo){ await sb.auth.signOut(); DB.authUserId = null; showLogin(); return; }
+  if(DB.isAdmin(cur)){
+    await Promise.all([DB.liberarReservasVencidas(), DB.archivarVendidos(), DB.eliminarArchivadosVencidos()]);
+    await DB.fetchAll();
+  }
+  showApp(DB.currentUser());
+}
+function showLogin(){
+  document.getElementById('loginScreen').hidden = false;
+  document.getElementById('appShell').hidden = true;
+  document.getElementById('loginError').hidden = true;
+}
+function showApp(user){
+  document.getElementById('loginScreen').hidden = true;
+  document.getElementById('appShell').hidden = false;
+  applyUserTheme(user);
+  document.getElementById('userAvatar').textContent = user.nombre.charAt(0).toUpperCase();
+  document.getElementById('userName').textContent = user.nombre;
+  document.getElementById('userRole').textContent = DB.rolLabel(user);
+  buildSidebar();
+  refreshBadges();
+  navigate(user.rol==='administrador' ? 'a-dashboard' : 'v-dashboard');
+}
+
+document.getElementById('loginForm').addEventListener('submit', async e=>{
+  e.preventDefault();
+  const btn = e.target.querySelector('button[type=submit]');
+  btn.disabled = true; btn.textContent = 'Ingresando...';
+  document.getElementById('loginError').hidden = true;
+  const r = await DB.login(document.getElementById('loginEmail').value.trim(), document.getElementById('loginPassword').value);
+  btn.disabled = false; btn.textContent = 'Ingresar';
+  if(r.ok) showApp(r.data);
+  else { const el=document.getElementById('loginError'); el.textContent=r.error; el.hidden=false; }
+});
+function setDropdownOpen(el, open){ el.classList.toggle('open', open); }
+function setSidebarOpen(open){
+  document.getElementById('sidebar').classList.toggle('open', open);
+  document.getElementById('sidebarScrim').classList.toggle('open', open);
+}
+document.getElementById('menuToggle').addEventListener('click', ()=>setSidebarOpen(!document.getElementById('sidebar').classList.contains('open')));
+document.getElementById('sidebarScrim').addEventListener('click', ()=>setSidebarOpen(false));
+document.getElementById('notifBtn').addEventListener('click', e=>{
+  e.stopPropagation();
+  const dd = document.getElementById('notifDropdown');
+  setDropdownOpen(document.getElementById('userDropdown'), false);
+  const willOpen = !dd.classList.contains('open');
+  if(willOpen) buildNotifDropdown();
+  setDropdownOpen(dd, willOpen);
+});
+document.getElementById('userChip').addEventListener('click', e=>{
+  e.stopPropagation();
+  const dd = document.getElementById('userDropdown');
+  setDropdownOpen(document.getElementById('notifDropdown'), false);
+  const willOpen = !dd.classList.contains('open');
+  if(willOpen) buildUserDropdown();
+  setDropdownOpen(dd, willOpen);
+});
+document.addEventListener('click', ()=>{ setDropdownOpen(document.getElementById('notifDropdown'), false); setDropdownOpen(document.getElementById('userDropdown'), false); });
+
+// Sincronización entre personas conectadas: como no hay localStorage compartido
+// con un backend real, cada 60s se refrescan los datos (y, si eres admin, se
+// corren las tareas de mantenimiento) para reflejar apartados/ventas de otras.
+setInterval(async ()=>{
+  if(document.getElementById('appShell').hidden) return;
+  if(DB.isAdmin()){
+    await DB.liberarReservasVencidas();
+    await DB.archivarVendidos();
+    await DB.eliminarArchivadosVencidos();
+  }
+  await refresh();
+}, 60000);
+sb.auth.onAuthStateChange((event)=>{
+  if(event==='SIGNED_OUT' && !document.getElementById('appShell').hidden){ showLogin(); }
+});
+
+// Entrada: ¿es una ficha pública (QR / link compartido) o el panel normal?
+const params = new URLSearchParams(location.search);
+if(params.get('p')){
+  renderPublicPage(params.get('p'));
+} else {
+  boot();
+}
+</script>
+</body>
+</html>
