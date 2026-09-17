@@ -220,6 +220,10 @@ tbody tr:hover{background:var(--color-surface-alt);}
 .who.archived-countdown svg{width:11px;height:11px;stroke:currentColor;fill:none;flex-shrink:0;}
 .product-card .actions{display:flex;gap:6px;flex-wrap:wrap;padding-top:10px;border-top:1px solid var(--color-border);}
 .icon-actions-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;width:100%;}
+.tag-row{display:flex;gap:5px;flex-wrap:wrap;margin:4px 0 8px;}
+.tag-chip{background:var(--mauve-100);color:var(--mauve-700);font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;}
+.who .badge{font-size:10px;padding:2px 7px;margin-left:4px;vertical-align:middle;}
+.who .badge svg{width:10px;height:10px;}
 
 /* ---------- modal ---------- */
 .modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.6);display:flex;align-items:center;justify-content:center;
@@ -381,6 +385,7 @@ tbody tr:hover{background:var(--color-surface-alt);}
         </div>
       </div>
       <div class="topbar-right">
+        <button class="icon-btn" id="searchBtn" data-tip="Buscar (Ctrl/Cmd+K)"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
         <div class="pos-rel">
           <button class="icon-btn" id="notifBtn" data-tip="Notificaciones"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="bell-dot" id="bellDot" hidden></span></button>
           <div class="dropdown" id="notifDropdown" style="width:320px;max-height:400px;overflow-y:auto;"></div>
@@ -503,6 +508,7 @@ const DB = {
       costo: Number(data.costo), precio_venta: Number(data.precio_venta),
       porcentaje_ganancia: Number(data.porcentaje_ganancia) || this.state.configuracion.comision_default_porcentaje,
       url_video: data.url_video || null, caja_id: data.caja_id || null,
+      etiquetas: parseEtiquetas(data.etiquetas),
       created_by_admin: this.currentUser().id
     };
     const { data:prod, error } = await sb.from('productos').insert(insertData).select().single();
@@ -511,7 +517,38 @@ const DB = {
     await sb.rpc('fn_registrar_bitacora', { p_tipo:'crear', p_tabla:'productos', p_registro_id:prod.id, p_descripcion:'Producto creado: '+prod.nombre });
     return { ok:true, data:prod };
   },
+  // Clona los datos base de un producto (no fotos, no estado/reserva) para
+  // variantes parecidas — nace en_inventario, lista para editar/subir fotos.
+  async duplicarProducto(id){
+    const p = this.state.productos.find(x=>x.id===id); if(!p) return { ok:false, error:'NO_ENCONTRADO' };
+    const insertData = {
+      nombre: p.nombre + ' (copia)', descripcion: p.descripcion, categoria: p.categoria,
+      costo: p.costo, precio_venta: p.precio_venta, porcentaje_ganancia: p.porcentaje_ganancia,
+      url_video: p.url_video, caja_id: p.caja_id, etiquetas: p.etiquetas || [],
+      created_by_admin: this.currentUser().id
+    };
+    const { data:row, error } = await sb.from('productos').insert(insertData).select().single();
+    if(error) return { ok:false, error: error.message };
+    await sb.rpc('fn_registrar_bitacora', { p_tipo:'duplicar', p_tabla:'productos', p_registro_id:row.id, p_descripcion:'Producto duplicado de "'+p.nombre+'": '+row.nombre });
+    return { ok:true, data:row };
+  },
+  // Inserta muchos productos de una vez (importación CSV). Cada fila ya viene
+  // validada por parseCSVProductos(); aquí solo se completan los defaults.
+  async importarProductos(filas){
+    const rows = filas.map(f => ({
+      nombre: f.nombre, descripcion: f.descripcion || '', categoria: f.categoria || null,
+      costo: Number(f.costo)||0, precio_venta: Number(f.precio_venta)||0,
+      porcentaje_ganancia: Number(f.porcentaje_ganancia) || this.state.configuracion.comision_default_porcentaje,
+      url_video: f.url_video || null, etiquetas: parseEtiquetas(f.etiquetas),
+      created_by_admin: this.currentUser().id
+    }));
+    const { data, error } = await sb.from('productos').insert(rows).select();
+    if(error) return { ok:false, error: error.message };
+    await sb.rpc('fn_registrar_bitacora', { p_tipo:'importar', p_tabla:'productos', p_registro_id:null, p_descripcion:data.length+' producto(s) importados desde CSV' });
+    return { ok:true, data };
+  },
   async editarProducto(id, data){
+    if('etiquetas' in data && !Array.isArray(data.etiquetas)) data = { ...data, etiquetas: parseEtiquetas(data.etiquetas) };
     const { data:row, error } = await sb.from('productos').update(data).eq('id', id).select().single();
     if(error) return { ok:false, error: error.message };
     await sb.rpc('fn_registrar_bitacora', { p_tipo:'editar', p_tabla:'productos', p_registro_id:id, p_descripcion:'Producto editado: '+row.nombre });
@@ -547,6 +584,19 @@ const DB = {
       const { data:pub } = sb.storage.from('productos-fotos').getPublicUrl(path);
       await sb.from('fotos_producto').insert({ producto_id:productoId, url_foto:pub.publicUrl, fase, orden: existentes+i+1, uploaded_by_id:this.currentUser().id });
     }
+  },
+  // Borra la fila Y el archivo real en Storage (si no, quedan huérfanos ocupando espacio).
+  async eliminarFoto(fotoId){
+    const foto = this.state.fotos.find(f=>f.id===fotoId); if(!foto) return { ok:false, error:'NO_ENCONTRADA' };
+    const marcador = '/productos-fotos/';
+    const idx = foto.url_foto.indexOf(marcador);
+    if(idx !== -1){
+      const path = decodeURIComponent(foto.url_foto.slice(idx + marcador.length));
+      await sb.storage.from('productos-fotos').remove([path]);
+    }
+    const { error } = await sb.from('fotos_producto').delete().eq('id', fotoId);
+    if(error) return { ok:false, error: error.message };
+    return { ok:true };
   },
 
   // ---------------- APARTAR / LIBERAR / VENDER (atómico, vía RPC) ----------------
@@ -738,6 +788,57 @@ function toast(msg, type){
   setTimeout(dismiss, 3800);
 }
 function fmtDate(iso){ if(!iso) return '—'; const d=new Date(iso); return d.toLocaleDateString('es-GT',{day:'2-digit',month:'short',year:'numeric'})+' '+d.toLocaleTimeString('es-GT',{hour:'2-digit',minute:'2-digit'}); }
+// Etiquetas libres: el usuario las escribe separadas por coma en un solo campo de texto.
+function parseEtiquetas(v){
+  if(Array.isArray(v)) return v.map(t=>String(t).trim()).filter(Boolean);
+  return String(v||'').split(',').map(t=>t.trim()).filter(Boolean);
+}
+// Parser de CSV minimalista (sin librería): soporta comas dentro de campos entre comillas.
+function parseCSV(text){
+  const filas = [];
+  let fila = [], campo = '', enComillas = false;
+  for(let i=0; i<text.length; i++){
+    const c = text[i], next = text[i+1];
+    if(enComillas){
+      if(c==='"' && next==='"'){ campo+='"'; i++; }
+      else if(c==='"'){ enComillas=false; }
+      else campo += c;
+    } else {
+      if(c==='"') enComillas = true;
+      else if(c===','){ fila.push(campo); campo=''; }
+      else if(c==='\n' || c==='\r'){
+        if(c==='\r' && next==='\n') i++;
+        fila.push(campo); campo='';
+        if(fila.some(v=>v.trim()!=='')) filas.push(fila);
+        fila = [];
+      } else campo += c;
+    }
+  }
+  if(campo!=='' || fila.length){ fila.push(campo); if(fila.some(v=>v.trim()!=='')) filas.push(fila); }
+  return filas;
+}
+// Convierte el CSV crudo en filas {nombre,categoria,...} + errores de validación por fila.
+function parseCSVProductos(text){
+  const filas = parseCSV(text);
+  if(!filas.length) return { columnas:[], productos:[], errores:['El archivo está vacío'] };
+  const encabezado = filas[0].map(h=>h.trim().toLowerCase());
+  const idx = campo => encabezado.indexOf(campo);
+  const productos = [], errores = [];
+  for(let i=1; i<filas.length; i++){
+    const f = filas[i];
+    const get = campo => { const j = idx(campo); return j===-1 ? '' : (f[j]||'').trim(); };
+    const nombre = get('nombre'), costo = get('costo'), precio_venta = get('precio_venta');
+    if(!nombre || !costo || !precio_venta){
+      errores.push('Fila '+(i+1)+': falta nombre, costo o precio_venta'); continue;
+    }
+    productos.push({
+      nombre, categoria: get('categoria'), descripcion: get('descripcion'),
+      costo, precio_venta, porcentaje_ganancia: get('porcentaje_ganancia'),
+      url_video: get('url_video'), etiquetas: get('etiquetas')
+    });
+  }
+  return { columnas:encabezado, productos, errores };
+}
 function fmtDateShort(iso){ if(!iso) return '—'; return new Date(iso).toLocaleDateString('es-GT',{day:'2-digit',month:'short'}); }
 function timeAgo(iso){
   const s = Math.floor((Date.now()-new Date(iso).getTime())/1000);
@@ -781,6 +882,28 @@ function estadoInfo(estado){
 function productBadgeInfo(p){
   if(p.archivado) return { label:'Archivado', cls:'badge-neutral' };
   return estadoInfo(p.estado);
+}
+// Horas que le quedan a una reserva antes de liberarse sola (según la
+// configuración de auto-liberación). Null si no aplica o está deshabilitado.
+function horasParaLiberar(p){
+  if(!p || p.estado!=='en_reserva' || !p.reservado_en) return null;
+  const cfg = DB.state && DB.state.configuracion;
+  if(!cfg || cfg.permitir_auto_liberacion===false) return null;
+  const horasLimite = Number(cfg.tiempo_auto_liberacion_horas)||24;
+  const transcurridas = (Date.now() - new Date(p.reservado_en).getTime()) / 3600000;
+  return Math.max(0, horasLimite - transcurridas);
+}
+function fmtHoras(h){
+  if(h < 1) return Math.max(1,Math.round(h*60))+' min';
+  return Math.round(h)+' h';
+}
+// Pinta un badge de cuenta regresiva para una reserva; null si no aplica.
+function reservaCountdownBadge(p){
+  const h = horasParaLiberar(p);
+  if(h===null) return '';
+  const urgente = h <= 1, medio = h <= 6;
+  const cls = urgente ? 'badge-danger' : medio ? 'badge-warning' : 'badge-neutral';
+  return `<span class="badge ${cls}" data-tip="Se libera sola si nadie vende">${icon('clock')} vence en ${fmtHoras(h)}</span>`;
 }
 function parseVideoUrl(url){
   if(!url) return null;
@@ -830,6 +953,11 @@ function icon(name){
     tag:'<path d="M20.59 13.41L11 3.83A2 2 0 0 0 9.59 3.24L3 3v6.59a2 2 0 0 0 .59 1.41l9.58 9.58a2 2 0 0 0 2.82 0l4.6-4.6a2 2 0 0 0 0-2.82z"/><line x1="7.5" y1="7.5" x2="7.51" y2="7.5"/>',
     key:'<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>',
     palette:'<circle cx="8" cy="12" r="5"/><circle cx="16" cy="8" r="5"/><circle cx="16" cy="16" r="5"/>',
+    alert:'<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+    clock:'<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+    copy:'<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+    upload:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
+    command:'<circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/>',
   }[name] || '';
   return `<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${I}</svg>`;
 }
@@ -892,6 +1020,7 @@ const NAV = {
   administrador: [
     { section:'ADMINISTRACIÓN' },
     { page:'a-dashboard', label:'Dashboard', icon:'dashboard' },
+    { page:'a-pendientes', label:'Pendientes', icon:'alert' },
     { page:'a-inventario', label:'Inventario', icon:'box' },
     { page:'a-nuevo', label:'Nuevo Producto', icon:'plus' },
     { page:'a-cajas', label:'Cajas', icon:'crate' },
@@ -911,6 +1040,7 @@ const PAGE_TITLES = {
   'v-ventas':['Mis Ventas','Historial de productos que has vendido'],
   'v-comisiones':['Mis Comisiones','Lo que has ganado por tus ventas'],
   'a-dashboard':['Dashboard','Resumen general del negocio'],
+  'a-pendientes':['Pendientes','Todo lo que necesita tu revisión, en un solo lugar'],
   'a-inventario':['Inventario','Estado de todos los productos'],
   'a-nuevo':['Nuevo Producto','Registrar un producto para la venta'],
   'a-cajas':['Cajas','Lotes de mercancía comprados'],
@@ -989,6 +1119,7 @@ function productCard(p, opts){
       <div class="icon-actions-row">
       <button class="icon-btn edit" data-action="editar" data-id="${p.id}" data-tip="Editar">${icon('edit')}</button>
       <button class="icon-btn info" data-action="qr" data-id="${p.id}" data-tip="Código QR">${icon('qr')}</button>
+      <button class="icon-btn view" data-action="duplicar" data-id="${p.id}" data-tip="Duplicar">${icon('copy')}</button>
       ${(p.estado==='en_inventario' || p.archivado)?`<button class="icon-btn delete" data-action="eliminar" data-id="${p.id}" data-tip="${p.archivado?'Eliminar ahora':'Eliminar'}">${icon('trash')}</button>`:''}
       ${p.estado==='en_reserva' && p.reservado_por_id!==cur.id?`<button class="icon-btn delete" data-action="liberar" data-id="${p.id}" data-tip="Liberar reserva">${icon('x')}</button>`:''}
       ${p.estado==='devuelto'?`<button class="icon-btn confirm" data-action="reingresar" data-id="${p.id}" data-tip="Regresar a inventario">${icon('undo')}</button>`:''}
@@ -999,8 +1130,9 @@ function productCard(p, opts){
       <div class="flex-between"><span class="badge ${info.cls}">${info.label}</span><span class="text-faint" style="font-size:10.5px;">${p.codigo}</span></div>
       <div class="name mt-8">${p.nombre}${hasVideo?` <span class="pc-video-flag" data-tip="Tiene video">${icon('play')}</span>`:''}</div>
       <div class="cat">${p.categoria||'Sin categoría'}</div>
+      ${p.etiquetas && p.etiquetas.length ? `<div class="tag-row">${p.etiquetas.map(t=>`<span class="tag-chip">${t}</span>`).join('')}</div>` : ''}
       <div class="price-row"><span class="price">${money(p.precio_venta)}</span><span class="pct">${p.porcentaje_ganancia}% comisión</span></div>
-      ${vend?`<div class="who">Apartado por ${vend.nombre}</div>`:''}
+      ${vend?`<div class="who">Apartado por ${vend.nombre} ${reservaCountdownBadge(p)}</div>`:''}
       ${p.vendido_por_id?`<div class="who">Vendido por ${(DB.state.usuarios.find(u=>u.id===p.vendido_por_id)||{}).nombre||'—'}</div>`:''}
       ${p.archivado?`<div class="who archived-countdown">${icon('trash')} ${diasParaEliminar<=0?'Se elimina en el próximo chequeo':'Se elimina en '+diasParaEliminar+' día'+(diasParaEliminar===1?'':'s')}</div>`:''}
     </div>
@@ -1046,11 +1178,11 @@ PAGES['v-dashboard'] = () => {
     </div>
     <div class="panel">
       <div class="panel-head"><div class="panel-title">Mis productos apartados</div></div>
-      <div class="table-wrap"><table><thead><tr><th>Producto</th><th>Precio</th><th>Apartado</th><th></th></tr></thead><tbody>
-      ${misApartados.length ? misApartados.map(p=>`<tr><td>${p.nombre}</td><td>${money(p.precio_venta)}</td><td>${timeAgo(p.reservado_en)}</td>
+      <div class="table-wrap"><table><thead><tr><th>Producto</th><th>Precio</th><th>Apartado</th><th>Vence</th><th></th></tr></thead><tbody>
+      ${misApartados.length ? misApartados.map(p=>`<tr><td>${p.nombre}</td><td>${money(p.precio_venta)}</td><td>${timeAgo(p.reservado_en)}</td><td>${reservaCountdownBadge(p)}</td>
         <td><button class="btn btn-primary btn-sm" data-action="vender" data-id="${p.id}">Vender</button>
             <button class="btn btn-secondary btn-sm" data-action="liberar" data-id="${p.id}">Liberar</button></td></tr>`).join('')
-        : `<tr class="empty-row"><td colspan="4">No tienes productos apartados</td></tr>`}
+        : `<tr class="empty-row"><td colspan="5">No tienes productos apartados</td></tr>`}
       </tbody></table></div>
     </div>
     <div class="panel">
@@ -1170,6 +1302,65 @@ PAGES['a-dashboard'] = () => {
     </div>`;
 };
 
+// Bandeja única de todo lo que necesita revisión del admin: devoluciones
+// pendientes de aprobar, reservas por vencer pronto (se liberan solas) y
+// productos archivados a punto de eliminarse para siempre.
+PAGES['a-pendientes'] = () => {
+  const devs = DB.state.devoluciones.filter(d=>d.estado==='pendiente');
+  const reservas = DB.state.productos
+    .filter(p=>p.estado==='en_reserva')
+    .map(p=>({ p, h: horasParaLiberar(p) }))
+    .filter(x=>x.h!==null)
+    .sort((a,b)=>a.h-b.h);
+  const archivados = DB.state.productos
+    .filter(p=>p.archivado)
+    .map(p=>({ p, d: DB.diasParaEliminar(p) }))
+    .sort((a,b)=>a.d-b.d);
+
+  const seccionVacia = !devs.length && !reservas.length && !archivados.length;
+  if(seccionVacia){
+    return `<div class="panel text-center" style="padding:50px 20px;">
+      <div style="font-size:34px;margin-bottom:10px;">✓</div>
+      <div class="panel-title" style="margin-bottom:4px;">Todo al día</div>
+      <div class="text-muted">No hay devoluciones, reservas por vencer ni productos por eliminarse.</div>
+    </div>`;
+  }
+
+  return `
+    ${devs.length ? `<div class="panel">
+      <div class="panel-head"><div class="panel-title">Devoluciones pendientes de aprobar</div><span class="badge badge-warning">${devs.length}</span></div>
+      <div class="table-wrap"><table><thead><tr><th>Producto</th><th>Solicitó</th><th>Razón</th><th>Fecha</th><th></th></tr></thead><tbody>
+      ${devs.map(d=>{
+        const v = DB.state.venta_historial.find(x=>x.id===d.venta_historial_id);
+        const u = DB.state.usuarios.find(x=>x.id===d.solicitado_por);
+        return `<tr><td>${v?v.producto_nombre:'—'}</td><td>${u?u.nombre:'—'}</td><td>${d.razon}</td><td>${fmtDateShort(d.fecha_solicitud)}</td>
+          <td><button class="btn btn-primary btn-sm" data-action="aprobar-dev" data-id="${d.id}">Aprobar</button>
+              <button class="btn btn-secondary btn-sm" data-action="rechazar-dev" data-id="${d.id}">Rechazar</button></td></tr>`;
+      }).join('')}
+      </tbody></table></div>
+    </div>` : ''}
+
+    ${reservas.length ? `<div class="panel">
+      <div class="panel-head"><div class="panel-title">Reservas — se liberan solas si nadie vende</div><span class="badge badge-neutral">${reservas.length}</span></div>
+      <div class="table-wrap"><table><thead><tr><th>Producto</th><th>Apartado por</th><th>Vence en</th><th></th></tr></thead><tbody>
+      ${reservas.map(({p,h})=>{
+        const vend = DB.state.usuarios.find(u=>u.id===p.reservado_por_id);
+        return `<tr><td>${p.nombre}</td><td>${vend?vend.nombre:'—'}</td><td>${reservaCountdownBadge(p)}</td>
+          <td><button class="btn btn-secondary btn-sm" data-action="liberar" data-id="${p.id}">Liberar ahora</button></td></tr>`;
+      }).join('')}
+      </tbody></table></div>
+    </div>` : ''}
+
+    ${archivados.length ? `<div class="panel">
+      <div class="panel-head"><div class="panel-title">Archivados — se eliminarán para siempre</div><span class="badge badge-neutral">${archivados.length}</span></div>
+      <div class="table-wrap"><table><thead><tr><th>Producto</th><th>Archivado</th><th>Se elimina en</th><th></th></tr></thead><tbody>
+      ${archivados.map(({p,d})=>`<tr><td>${p.nombre}</td><td>${fmtDateShort(p.archivado_en)}</td>
+        <td><span class="badge ${d<=1?'badge-danger':d<=5?'badge-warning':'badge-neutral'}">${d<=0?'próximo chequeo':d+' día'+(d===1?'':'s')}</span></td>
+        <td><button class="icon-btn delete" data-action="eliminar" data-id="${p.id}" data-tip="Eliminar ahora">${icon('trash')}</button></td></tr>`).join('')}
+      </tbody></table></div>
+    </div>` : ''}`;
+};
+
 PAGES['a-inventario'] = () => {
   const productos = DB.state.productos;
   return `
@@ -1177,6 +1368,7 @@ PAGES['a-inventario'] = () => {
       <input id="invSearch" placeholder="Buscar producto o código...">
       <select id="invCategoria"><option value="">Todas las categorías</option>${DB.state.categorias.map(c=>`<option>${c.nombre}</option>`).join('')}</select>
       <button class="btn btn-secondary btn-sm" id="btnArchivar" data-tip="Elimina las fotos de los productos vendidos hace más de ${DB.state.configuracion.dias_archivo_productos_vendidos} días">${icon('trash')} Archivar Vendidos</button>
+      <button class="btn btn-secondary btn-sm" id="btnImportarCSV">${icon('upload')} Importar CSV</button>
     </div>
     <div id="kanbanWrap" class="kanban">
       ${kanbanColumn('en_inventario','Disponible','var(--forest-600)', productos.filter(p=>p.estado==='en_inventario'),'admin')}
@@ -1207,6 +1399,7 @@ PAGES['a-nuevo'] = () => `
       </div>
       <div class="form-group"><label>% Comisión para quien lo venda</label><input type="number" step="0.01" id="npPorcentaje" value="${DB.state.configuracion.comision_default_porcentaje}"></div>
       <div class="form-group"><label>Link de video (YouTube / TikTok)</label><input id="npVideo" placeholder="https://youtube.com/watch?v=..."></div>
+      <div class="form-group"><label>Etiquetas (opcional)</label><input id="npEtiquetas" placeholder="Ej: Oferta, Nuevo ingreso"><div class="text-faint mt-8" style="font-size:11.5px;">Sepáralas por coma — libres, no necesitan crearse antes.</div></div>
       <div class="form-group">
         <label>Fotos del producto (1 a 5)</label>
         <div class="photo-drop" id="npDropZone">${icon('image')}<div class="mt-8">Click para subir fotos</div><div class="text-faint" style="font-size:11.5px;">JPG o PNG · máximo 5</div></div>
@@ -1444,6 +1637,8 @@ function modalQR(p){
 }
 
 function modalEditarProducto(p){
+  let fotosBuffer = [];
+  const fotosExistentes = DB.fotosDe(p.id, 'inventario');
   openModal(`
     <div class="modal-head"><div class="modal-title">Editar Producto</div><button class="icon-btn" onclick="closeModal()">${icon('x')}</button></div>
     <div class="modal-body">
@@ -1460,10 +1655,45 @@ function modalEditarProducto(p){
         <div class="form-group"><label>Precio de venta</label><input type="number" step="0.01" id="epPrecio" value="${p.precio_venta}"></div>
       </div>
       <div class="form-group"><label>Video</label><input id="epVideo" value="${p.url_video||''}"></div>
+      <div class="form-group"><label>Etiquetas</label><input id="epEtiquetas" value="${(p.etiquetas||[]).join(', ')}" placeholder="Ej: Oferta, Nuevo ingreso"></div>
       <div class="form-group"><label>Descripción</label><textarea id="epDescripcion" rows="3">${p.descripcion||''}</textarea></div>
+      <div class="form-group">
+        <label>Fotos (${fotosExistentes.length}/5)</label>
+        <div class="photo-preview-grid" id="epFotosExistentes">
+          ${fotosExistentes.map(f=>`<div class="photo-preview"><img src="${f.url_foto}"><button data-foto-id="${f.id}" data-tip="Eliminar">${icon('x')}</button></div>`).join('') || `<div class="text-faint" style="font-size:11.5px;grid-column:1/-1;">Sin fotos todavía.</div>`}
+        </div>
+        ${fotosExistentes.length < 5 ? `
+          <div class="photo-drop mt-8" id="epDropZone">${icon('image')}<div class="mt-8">Click para agregar más fotos</div></div>
+          <input type="file" id="epFotosNuevas" accept="image/*" multiple hidden>
+          <div class="photo-preview-grid" id="epPreviewNuevas"></div>` : ''}
+      </div>
     </div>
     <div class="modal-foot"><button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="btnGuardarEdit">Guardar cambios</button></div>`);
+
+  document.querySelectorAll('#epFotosExistentes button[data-foto-id]').forEach(b=>b.addEventListener('click', async ()=>{
+    if(!confirm('¿Eliminar esta foto? No se puede deshacer.')) return;
+    b.disabled = true;
+    const res = await DB.eliminarFoto(b.dataset.fotoId);
+    if(res.ok){ await DB.fetchAll(); toast('Foto eliminada','success'); modalEditarProducto(DB.state.productos.find(x=>x.id===p.id)); }
+    else { toast('No se pudo eliminar: '+res.error,'danger'); b.disabled = false; }
+  }));
+
+  if(fotosExistentes.length < 5){
+    const dz = document.getElementById('epDropZone'), input = document.getElementById('epFotosNuevas');
+    dz.addEventListener('click', ()=>input.click());
+    const renderPreviewNuevas = () => {
+      document.getElementById('epPreviewNuevas').innerHTML = fotosBuffer.map((f,i)=>`<div class="photo-preview"><img src="${URL.createObjectURL(f)}"><button data-i="${i}">${icon('x')}</button></div>`).join('');
+      document.querySelectorAll('#epPreviewNuevas button').forEach(b=>b.addEventListener('click', ()=>{ fotosBuffer.splice(Number(b.dataset.i),1); renderPreviewNuevas(); }));
+    };
+    input.addEventListener('change', e=>{
+      const disponibles = 5 - fotosExistentes.length - fotosBuffer.length;
+      fotosBuffer.push(...[...e.target.files].slice(0, disponibles));
+      renderPreviewNuevas();
+    });
+  }
+
   document.getElementById('btnGuardarEdit').addEventListener('click', async ()=>{
+    const btn = document.getElementById('btnGuardarEdit'); btn.disabled = true;
     const res = await DB.editarProducto(p.id, {
       nombre: document.getElementById('epNombre').value,
       categoria: document.getElementById('epCategoria').value || null,
@@ -1471,10 +1701,12 @@ function modalEditarProducto(p){
       costo: Number(document.getElementById('epCosto').value),
       precio_venta: Number(document.getElementById('epPrecio').value),
       url_video: document.getElementById('epVideo').value,
+      etiquetas: document.getElementById('epEtiquetas').value,
       descripcion: document.getElementById('epDescripcion').value
     });
+    if(res.ok && fotosBuffer.length) await DB.subirFotos(p.id, 'inventario', fotosBuffer);
     if(res.ok){ toast('Producto actualizado','success'); closeModal(); await refresh(); }
-    else toast('No se pudo actualizar: '+res.error,'danger');
+    else { toast('No se pudo actualizar: '+res.error,'danger'); btn.disabled = false; }
   });
 }
 
@@ -1698,6 +1930,85 @@ function modalPagarComision(vendedorId){
   });
 }
 
+// Importar varios productos de golpe desde un CSV (útil cuando llega una caja
+// con muchas piezas nuevas). Parseo 100% en el navegador, sin librerías.
+function modalImportarCSV(){
+  let filasValidas = [];
+  openModal(`
+    <div class="modal-head"><div class="modal-title">Importar productos desde CSV</div><button class="icon-btn" onclick="closeModal()">${icon('x')}</button></div>
+    <div class="modal-body">
+      <p class="text-muted mb-0">Columnas esperadas: <code>nombre, categoria, descripcion, costo, precio_venta, porcentaje_ganancia, url_video, etiquetas</code>. Solo <strong>nombre, costo y precio_venta</strong> son obligatorias; las demás pueden ir vacías.</p>
+      <button class="btn btn-secondary btn-sm mt-16" id="btnPlantillaCSV">${icon('download')} Descargar plantilla</button>
+      <div class="photo-drop mt-16" id="csvDropZone">${icon('upload')}<div class="mt-8">Click para elegir el archivo .csv</div></div>
+      <input type="file" id="csvInput" accept=".csv,text/csv" hidden>
+      <div id="csvPreview" class="mt-16"></div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="btnConfirmarImport" disabled>${icon('upload')} Importar</button></div>`);
+
+  document.getElementById('btnPlantillaCSV').addEventListener('click', ()=>{
+    const csv = 'nombre,categoria,descripcion,costo,precio_venta,porcentaje_ganancia,url_video,etiquetas\n"Bolsa de ejemplo","Bolsas","Descripción opcional",250,480,10,,"Oferta, Nuevo ingreso"\n';
+    const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'plantilla_productos.csv'; a.click();
+  });
+
+  const dz = document.getElementById('csvDropZone'), input = document.getElementById('csvInput');
+  dz.addEventListener('click', ()=>input.click());
+  input.addEventListener('change', async e=>{
+    const file = e.target.files[0]; if(!file) return;
+    const text = await file.text();
+    const { productos, errores } = parseCSVProductos(text);
+    filasValidas = productos;
+    document.getElementById('csvPreview').innerHTML = `
+      <div class="calc-box">
+        <div class="calc-row"><span>Filas válidas</span><span>${productos.length}</span></div>
+        ${errores.length ? `<div class="calc-row" style="color:var(--red-700);"><span>Filas con error (se omiten)</span><span>${errores.length}</span></div>` : ''}
+      </div>
+      ${errores.length ? `<div class="text-faint mt-8" style="font-size:11.5px;">${errores.slice(0,8).join('<br>')}${errores.length>8?'<br>…':''}</div>` : ''}
+      ${productos.length ? `<div class="table-wrap mt-16"><table><thead><tr><th>Nombre</th><th>Categoría</th><th>Costo</th><th>Precio</th></tr></thead><tbody>
+        ${productos.slice(0,10).map(p=>`<tr><td>${p.nombre}</td><td>${p.categoria||'—'}</td><td>${p.costo}</td><td>${p.precio_venta}</td></tr>`).join('')}
+      </tbody></table></div>${productos.length>10?`<div class="text-faint mt-8" style="font-size:11.5px;">…y ${productos.length-10} más</div>`:''}` : ''}`;
+    document.getElementById('btnConfirmarImport').disabled = productos.length===0;
+  });
+
+  document.getElementById('btnConfirmarImport').addEventListener('click', async ()=>{
+    const btn = document.getElementById('btnConfirmarImport'); btn.disabled = true; btn.textContent = 'Importando...';
+    const res = await DB.importarProductos(filasValidas);
+    if(res.ok){ toast(res.data.length+' producto(s) importados','success'); closeModal(); await refresh(); }
+    else { toast('No se pudo importar: '+res.error,'danger'); btn.disabled = false; btn.innerHTML = icon('upload')+' Importar'; }
+  });
+}
+
+// Buscador rápido global (Cmd/Ctrl+K): filtra por nombre o código sin salir de la página actual.
+function modalBuscar(){
+  openModal(`
+    <div class="modal-head"><div class="modal-title">${icon('search')} Buscar producto</div><button class="icon-btn" onclick="closeModal()">${icon('x')}</button></div>
+    <div class="modal-body">
+      <input id="buscarInput" placeholder="Nombre o código..." autocomplete="off">
+      <div id="buscarResultados" class="mt-16"></div>
+    </div>`);
+  const input = document.getElementById('buscarInput');
+  const resultados = document.getElementById('buscarResultados');
+  const render = q=>{
+    q = q.trim().toLowerCase();
+    if(!q){ resultados.innerHTML = `<div class="text-faint text-center" style="padding:20px 0;">Escribe para buscar en todo el inventario</div>`; return; }
+    const encontrados = DB.state.productos.filter(p=>p.nombre.toLowerCase().includes(q) || p.codigo.toLowerCase().includes(q)).slice(0,20);
+    resultados.innerHTML = encontrados.length ? encontrados.map(p=>{
+      const info = productBadgeInfo(p);
+      return `<div class="dropdown-item" data-buscar-id="${p.id}" style="cursor:pointer;justify-content:space-between;border-radius:10px;">
+        <span>${p.nombre} <span class="text-faint" style="font-size:10.5px;">${p.codigo}</span></span>
+        <span class="badge ${info.cls}">${info.label}</span></div>`;
+    }).join('') : `<div class="text-faint text-center" style="padding:20px 0;">Sin resultados para "${q}"</div>`;
+    resultados.querySelectorAll('[data-buscar-id]').forEach(el=>el.addEventListener('click', ()=>{
+      const p = DB.state.productos.find(x=>x.id===el.dataset.buscarId);
+      closeModal();
+      if(p) setTimeout(()=>modalVerFicha(p), 190);
+    }));
+  };
+  input.addEventListener('input', ()=>render(input.value));
+  render('');
+  setTimeout(()=>input.focus(), 50);
+}
+
 /* =====================================================================
    EVENTOS POR PÁGINA (delegación central abajo se encarga de [data-action])
 ===================================================================== */
@@ -1726,7 +2037,8 @@ function bindPageEvents(page){
       const res = await DB.crearProducto({
         nombre, categoria: document.getElementById('npCategoria').value, caja_id: document.getElementById('npCaja').value||null,
         descripcion: document.getElementById('npDescripcion').value, costo, precio_venta: precio,
-        porcentaje_ganancia: document.getElementById('npPorcentaje').value, url_video: document.getElementById('npVideo').value
+        porcentaje_ganancia: document.getElementById('npPorcentaje').value, url_video: document.getElementById('npVideo').value,
+        etiquetas: document.getElementById('npEtiquetas').value
       }, fotosBuffer);
       if(res.ok){ toast('Producto creado','success'); await DB.fetchAll(); navigate('a-inventario'); }
       else { toast('No se pudo crear: '+res.error,'danger'); btn.disabled = false; btn.innerHTML = btnHtml; }
@@ -1760,6 +2072,7 @@ function bindPageEvents(page){
       toast(n ? 'Fotos eliminadas de '+n+' producto(s) vendido(s)' : 'No hay productos vendidos listos para archivar todavía', n?'success':'');
       await refresh();
     });
+    document.getElementById('btnImportarCSV').addEventListener('click', modalImportarCSV);
   }
   if(page==='a-cajas') document.getElementById('btnNuevaCaja').addEventListener('click', modalNuevaCaja);
   if(page==='a-categorias') document.getElementById('btnNuevaCategoria').addEventListener('click', ()=>modalCategoria(null));
@@ -1806,6 +2119,7 @@ document.getElementById('mainContent').addEventListener('click', async e=>{
   else if(action==='vender'){ const prod=p(); if(prod) modalVender(prod); }
   else if(action==='ver'){ const prod=p(); if(prod) modalVerFicha(prod); }
   else if(action==='editar'){ const prod=p(); if(prod) modalEditarProducto(prod); }
+  else if(action==='duplicar'){ const r=await DB.duplicarProducto(id); if(r.ok){ toast('Producto duplicado — edítalo para ajustarlo','success'); await refresh(); modalEditarProducto(DB.state.productos.find(x=>x.id===r.data.id)); } else toast('No se pudo duplicar: '+r.error,'danger'); }
   else if(action==='eliminar'){ if(confirm('¿Eliminar este producto?')){ const r=await DB.eliminarProducto(id); if(r.ok){ toast('Producto eliminado','success'); await refresh(); } else toast('No se pudo eliminar: '+r.error,'danger'); } }
   else if(action==='reingresar'){ const r=await DB.reingresarProducto(id); if(r.ok){ toast('Producto reingresado a inventario','success'); await refresh(); } }
   else if(action==='qr'){ const prod=p(); if(prod) modalQR(prod); }
@@ -1847,10 +2161,28 @@ document.getElementById('mainContent').addEventListener('click', async e=>{
 /* =====================================================================
    TOPBAR: notificaciones + menú de usuario
 ===================================================================== */
+// Cuenta lo que necesita revisión del admin: devoluciones pendientes + reservas
+// por vencer pronto (≤6h) + productos archivados que se eliminarán pronto (≤5 días).
+function contarPendientes(){
+  if(!DB.state || !DB.isAdmin()) return 0;
+  const devs = DB.state.devoluciones.filter(d=>d.estado==='pendiente').length;
+  const reservasUrgentes = DB.state.productos.filter(p=>{ const h=horasParaLiberar(p); return h!==null && h<=6; }).length;
+  const archivadosUrgentes = DB.state.productos.filter(p=>{ const d=DB.diasParaEliminar(p); return d!==null && d<=5; }).length;
+  return devs + reservasUrgentes + archivadosUrgentes;
+}
 function refreshBadges(){
   const cur = DB.currentUser(); if(!cur) return;
   const sinLeer = DB.state.notificaciones.filter(n=>n.usuario_id===cur.id && !n.leida);
   document.getElementById('bellDot').hidden = sinLeer.length===0;
+  const navBtn = document.querySelector('.nav-item[data-page="a-pendientes"]');
+  if(navBtn){
+    const n = contarPendientes();
+    let badge = navBtn.querySelector('.nav-badge');
+    if(n>0){
+      if(!badge){ badge = document.createElement('span'); badge.className='nav-badge'; navBtn.appendChild(badge); }
+      badge.textContent = n;
+    } else if(badge) badge.remove();
+  }
 }
 function buildNotifDropdown(){
   const cur = DB.currentUser();
@@ -1950,6 +2282,7 @@ function setSidebarOpen(open){
   document.getElementById('sidebarScrim').classList.toggle('open', open);
 }
 document.getElementById('menuToggle').addEventListener('click', ()=>setSidebarOpen(!document.getElementById('sidebar').classList.contains('open')));
+document.getElementById('searchBtn').addEventListener('click', modalBuscar);
 document.getElementById('sidebarScrim').addEventListener('click', ()=>setSidebarOpen(false));
 document.getElementById('notifBtn').addEventListener('click', e=>{
   e.stopPropagation();
@@ -1969,9 +2302,21 @@ document.getElementById('userChip').addEventListener('click', e=>{
 });
 document.addEventListener('click', ()=>{ setDropdownOpen(document.getElementById('notifDropdown'), false); setDropdownOpen(document.getElementById('userDropdown'), false); });
 
-// Sincronización entre personas conectadas: como no hay localStorage compartido
-// con un backend real, cada 60s se refrescan los datos (y, si eres admin, se
-// corren las tareas de mantenimiento) para reflejar apartados/ventas de otras.
+// Buscador rápido global: Cmd/Ctrl+K desde cualquier parte del panel.
+document.addEventListener('keydown', e=>{
+  if((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==='k'){
+    if(document.getElementById('appShell').hidden) return;
+    e.preventDefault();
+    if(document.getElementById('modalOverlay')) return; // ya hay un modal abierto
+    modalBuscar();
+  }
+});
+
+// Sincronización entre personas conectadas: cada 60s se refrescan los datos
+// (y, si eres admin, se corren las tareas de mantenimiento) para reflejar
+// apartados/ventas de otras. OJO: nunca repinta una página con un formulario
+// que puedas estar llenando (perderías lo escrito) — solo actualiza badges.
+const PAGINAS_CON_FORMULARIO = new Set(['a-nuevo','a-config']);
 setInterval(async ()=>{
   if(document.getElementById('appShell').hidden) return;
   if(DB.isAdmin()){
@@ -1979,7 +2324,9 @@ setInterval(async ()=>{
     await DB.archivarVendidos();
     await DB.eliminarArchivadosVencidos();
   }
-  await refresh();
+  await DB.fetchAll();
+  refreshBadges();
+  if(currentPage && !PAGINAS_CON_FORMULARIO.has(currentPage)) navigate(currentPage);
 }, 60000);
 sb.auth.onAuthStateChange((event)=>{
   if(event==='SIGNED_OUT' && !document.getElementById('appShell').hidden){ showLogin(); }
