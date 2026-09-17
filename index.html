@@ -284,8 +284,13 @@ tbody tr:hover{background:var(--color-surface-alt);}
 .toast.open{opacity:1;transform:translateY(0) scale(1);}
 .toast.success{background:var(--forest-700);}
 .toast.danger{background:var(--red-700);}
-.photo-drop{border:1.5px dashed var(--color-border);border-radius:12px;padding:16px;text-align:center;cursor:pointer;background:var(--color-surface-alt);}
+.photo-drop{border:1.5px dashed var(--color-border);border-radius:10px;padding:10px 12px;text-align:center;cursor:pointer;background:var(--color-surface-alt);
+  display:flex;align-items:center;justify-content:center;gap:8px;transition:border-color 150ms var(--ease-out);}
 .photo-drop:hover{border-color:var(--color-accent);}
+.photo-drop svg{width:16px;height:16px;stroke:var(--color-text-faint);flex-shrink:0;}
+.photo-drop .pd-text{text-align:left;line-height:1.3;}
+.photo-drop .pd-text .t{font-size:12.5px;font-weight:600;}
+.photo-drop .pd-text .s{font-size:10.5px;color:var(--color-text-faint);}
 .photo-preview-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:10px;}
 .photo-preview{position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;background:var(--coffee-100);}
 .photo-preview img{width:100%;height:100%;object-fit:cover;}
@@ -923,6 +928,27 @@ function renderVideoEmbed(url){
   }
   return `<div class="text-muted" style="font-size:12px;margin-bottom:12px;"><a href="${info.originalUrl}" target="_blank" rel="noopener">Ver video de referencia ↗</a></div>`;
 }
+// Los links cortos de TikTok (vm.tiktok.com, tiktok.com/t/..., vt.tiktok.com)
+// no traen el ID del video, así que no se pueden incrustar directo. Se
+// resuelven UNA vez (al guardar el producto, no cada vez que alguien lo ve)
+// usando el oEmbed público de TikTok, que sí acepta el link corto y devuelve
+// el video real. Si algo falla (sin internet, TikTok caído), se guarda tal
+// cual como vino y queda como "Ver video de referencia" en vez de romperse.
+async function resolverVideoUrl(url){
+  url = (url||'').trim();
+  if(!url) return url;
+  const esCorta = /vm\.tiktok\.com\/|tiktok\.com\/t\/|vt\.tiktok\.com\//i.test(url);
+  if(!esCorta) return url;
+  try{
+    const r = await fetch('https://www.tiktok.com/oembed?url=' + encodeURIComponent(url));
+    if(!r.ok) return url;
+    const data = await r.json();
+    if(data.author_unique_id && data.embed_product_id){
+      return 'https://www.tiktok.com/@' + data.author_unique_id + '/video/' + data.embed_product_id;
+    }
+    return url;
+  }catch(e){ return url; }
+}
 function icon(name){
   const I = {
     dashboard:'<rect x="3" y="12" width="4" height="9"/><rect x="10" y="7" width="4" height="14"/><rect x="17" y="3" width="4" height="18"/>',
@@ -1402,7 +1428,7 @@ PAGES['a-nuevo'] = () => `
       <div class="form-group"><label>Etiquetas (opcional)</label><input id="npEtiquetas" placeholder="Ej: Oferta, Nuevo ingreso"><div class="text-faint mt-8" style="font-size:11.5px;">Sepáralas por coma — libres, no necesitan crearse antes.</div></div>
       <div class="form-group">
         <label>Fotos del producto (1 a 5)</label>
-        <div class="photo-drop" id="npDropZone">${icon('image')}<div class="mt-8">Click para subir fotos</div><div class="text-faint" style="font-size:11.5px;">JPG o PNG · máximo 5</div></div>
+        <div class="photo-drop" id="npDropZone">${icon('image')}<div class="pd-text"><div class="t">Click para subir fotos</div><div class="s">JPG o PNG · máximo 5</div></div></div>
         <input type="file" id="npFotos" accept="image/*" multiple hidden>
         <div class="photo-preview-grid" id="npPreview"></div>
       </div>
@@ -1663,7 +1689,7 @@ function modalEditarProducto(p){
           ${fotosExistentes.map(f=>`<div class="photo-preview"><img src="${f.url_foto}"><button data-foto-id="${f.id}" data-tip="Eliminar">${icon('x')}</button></div>`).join('') || `<div class="text-faint" style="font-size:11.5px;grid-column:1/-1;">Sin fotos todavía.</div>`}
         </div>
         ${fotosExistentes.length < 5 ? `
-          <div class="photo-drop mt-8" id="epDropZone">${icon('image')}<div class="mt-8">Click para agregar más fotos</div></div>
+          <div class="photo-drop mt-8" id="epDropZone">${icon('image')}<div class="pd-text"><div class="t">Agregar más fotos</div></div></div>
           <input type="file" id="epFotosNuevas" accept="image/*" multiple hidden>
           <div class="photo-preview-grid" id="epPreviewNuevas"></div>` : ''}
       </div>
@@ -1694,13 +1720,14 @@ function modalEditarProducto(p){
 
   document.getElementById('btnGuardarEdit').addEventListener('click', async ()=>{
     const btn = document.getElementById('btnGuardarEdit'); btn.disabled = true;
+    const urlVideo = await resolverVideoUrl(document.getElementById('epVideo').value);
     const res = await DB.editarProducto(p.id, {
       nombre: document.getElementById('epNombre').value,
       categoria: document.getElementById('epCategoria').value || null,
       porcentaje_ganancia: Number(document.getElementById('epPorcentaje').value),
       costo: Number(document.getElementById('epCosto').value),
       precio_venta: Number(document.getElementById('epPrecio').value),
-      url_video: document.getElementById('epVideo').value,
+      url_video: urlVideo,
       etiquetas: document.getElementById('epEtiquetas').value,
       descripcion: document.getElementById('epDescripcion').value
     });
@@ -1939,7 +1966,7 @@ function modalImportarCSV(){
     <div class="modal-body">
       <p class="text-muted mb-0">Columnas esperadas: <code>nombre, categoria, descripcion, costo, precio_venta, porcentaje_ganancia, url_video, etiquetas</code>. Solo <strong>nombre, costo y precio_venta</strong> son obligatorias; las demás pueden ir vacías.</p>
       <button class="btn btn-secondary btn-sm mt-16" id="btnPlantillaCSV">${icon('download')} Descargar plantilla</button>
-      <div class="photo-drop mt-16" id="csvDropZone">${icon('upload')}<div class="mt-8">Click para elegir el archivo .csv</div></div>
+      <div class="photo-drop mt-16" id="csvDropZone">${icon('upload')}<div class="pd-text"><div class="t">Click para elegir el archivo .csv</div></div></div>
       <input type="file" id="csvInput" accept=".csv,text/csv" hidden>
       <div id="csvPreview" class="mt-16"></div>
     </div>
@@ -2034,10 +2061,11 @@ function bindPageEvents(page){
       const btn = e.target.querySelector('button[type=submit]');
       const btnHtml = btn.innerHTML;
       btn.disabled = true; btn.textContent = 'Creando...';
+      const urlVideo = await resolverVideoUrl(document.getElementById('npVideo').value);
       const res = await DB.crearProducto({
         nombre, categoria: document.getElementById('npCategoria').value, caja_id: document.getElementById('npCaja').value||null,
         descripcion: document.getElementById('npDescripcion').value, costo, precio_venta: precio,
-        porcentaje_ganancia: document.getElementById('npPorcentaje').value, url_video: document.getElementById('npVideo').value,
+        porcentaje_ganancia: document.getElementById('npPorcentaje').value, url_video: urlVideo,
         etiquetas: document.getElementById('npEtiquetas').value
       }, fotosBuffer);
       if(res.ok){ toast('Producto creado','success'); await DB.fetchAll(); navigate('a-inventario'); }
