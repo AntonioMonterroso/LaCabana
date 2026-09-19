@@ -826,6 +826,21 @@ const DB = {
     return { ok:true, data };
   },
 
+  // Cuenta real en la base (no el cache limitado a 200 filas) — para poder
+  // avisar el número exacto antes de un borrado irreversible.
+  async contarBitacora(){
+    const { count, error } = await sb.from('bitacora_cambios').select('*', { count:'exact', head:true });
+    if(error) return 0;
+    return count||0;
+  },
+  // Borra TODA la bitácora de la base de datos. Nunca toca ventas/comisiones/
+  // montos (bitacora_cambios no tiene llave foránea hacia ninguna otra tabla).
+  async borrarBitacora(){
+    const { data, error } = await sb.rpc('fn_borrar_bitacora');
+    if(error) return { ok:false, error: error.message };
+    return { ok:true, data };
+  },
+
   // ---------------- USUARIOS ----------------
   // No hay crearUsuario a propósito: los usuarios solo se crean dando de alta
   // en Supabase Authentication (el trigger on_auth_user_created los trae acá).
@@ -1486,7 +1501,9 @@ PAGES['a-dashboard'] = () => {
         </div>` : `<div class="text-faint">Aún no hay ventas registradas</div>`}
       </div>
       <div class="panel">
-        <div class="panel-title" style="margin-bottom:14px;">Actividad reciente</div>
+        <div class="panel-head" style="margin-bottom:14px;"><div class="panel-title">Actividad reciente</div>
+          ${bitacoraReciente.length ? `<button class="icon-btn delete" id="btnBorrarBitacoraDash" data-tip="Borrar toda la bitácora">${icon('trash')}</button>` : ''}
+        </div>
         ${bitacoraReciente.length ? bitacoraReciente.map(b=>{
           const u = DB.state.usuarios.find(x=>x.id===b.usuario_id);
           return `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--color-border);font-size:12.5px;">
@@ -1756,6 +1773,9 @@ PAGES['a-usuarios'] = () => `
   </tbody></table></div>`;
 
 PAGES['a-bitacora'] = () => `
+  <div class="panel-head"><div class="text-muted" style="font-size:12.5px;">Se muestran los últimos 200 registros. El borrado elimina TODOS los que haya en la base, no solo estos.</div>
+    ${DB.state.bitacora.length ? `<button class="btn btn-danger btn-sm" id="btnBorrarBitacora">${icon('trash')} Borrar toda la Bitácora</button>` : ''}
+  </div>
   <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Tabla</th><th>Descripción</th></tr></thead><tbody>
   ${DB.state.bitacora.length ? DB.state.bitacora.slice(0,200).map(b=>{
     const u = DB.state.usuarios.find(x=>x.id===b.usuario_id);
@@ -2303,6 +2323,31 @@ function modalHistorialCliente(cliente){
     </div>`, 'lg');
 }
 
+// Doble confirmación real para una acción irreversible: 1) el admin decide
+// abrir este modal, 2) tiene que escribir la palabra exacta para habilitar
+// el botón — mucho más difícil de disparar sin querer que dos confirm() seguidos.
+async function modalConfirmarBorrarBitacora(){
+  const total = await DB.contarBitacora();
+  openModal(`
+    <div class="modal-head"><div class="modal-title">${icon('trash')} Borrar toda la Bitácora</div><button class="icon-btn" onclick="closeModal()">${icon('x')}</button></div>
+    <div class="modal-body">
+      <p class="text-muted mb-0">Esto elimina <strong>de la base de datos, para siempre</strong>, los ${total} registro(s) de actividad (quién creó, editó o vendió qué, y cuándo) — incluye lo que se ve en "Actividad reciente" del Dashboard. <strong>No se puede deshacer.</strong></p>
+      <p class="text-muted mt-8">Esto <strong>nunca</strong> borra ventas, comisiones ni ningún monto o ganancia — esos viven en otra tabla aparte y no se tocan.</p>
+      <div class="form-group mt-16"><label>Escribe <strong>BORRAR</strong> para confirmar</label><input id="confirmarBorrarInput" placeholder="BORRAR" autocomplete="off"></div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-danger" id="btnConfirmarBorrarBitacora" disabled>${icon('trash')} Eliminar para siempre</button></div>`);
+  const input = document.getElementById('confirmarBorrarInput');
+  const btn = document.getElementById('btnConfirmarBorrarBitacora');
+  input.addEventListener('input', ()=>{ btn.disabled = input.value.trim().toUpperCase() !== 'BORRAR'; });
+  btn.addEventListener('click', async ()=>{
+    const btnHtml = btn.innerHTML;
+    btn.disabled = true; btn.textContent = 'Eliminando...';
+    const res = await DB.borrarBitacora();
+    if(res.ok){ toast('Bitácora eliminada ('+res.data+' registro(s))','success'); closeModal(); await refresh(); }
+    else { toast('No se pudo eliminar: '+res.error,'danger'); btn.disabled = false; btn.innerHTML = btnHtml; }
+  });
+}
+
 function modalGasto(gasto){
   const edit = !!gasto;
   openModal(`
@@ -2482,6 +2527,8 @@ function modalBuscar(){
    EVENTOS POR PÁGINA (delegación central abajo se encarga de [data-action])
 ===================================================================== */
 function bindPageEvents(page){
+  if(page==='a-dashboard') document.getElementById('btnBorrarBitacoraDash')?.addEventListener('click', modalConfirmarBorrarBitacora);
+  if(page==='a-bitacora') document.getElementById('btnBorrarBitacora')?.addEventListener('click', modalConfirmarBorrarBitacora);
   if(page==='a-nuevo'){
     let fotosBuffer = [];
     const dz = document.getElementById('npDropZone'), input = document.getElementById('npFotos');
