@@ -317,6 +317,26 @@ tbody tr:hover{background:var(--color-surface-alt);}
 .bar-chart .bar:hover{background:var(--color-accent-dark);}
 .bar-chart-labels{display:flex;gap:6px;margin-top:6px;}
 .bar-chart-labels span{flex:1;text-align:center;font-size:9.5px;color:var(--color-text-faint);}
+
+/* ---------- exportar a PDF (impresión nativa, solo los datos del reporte) ---------- */
+.print-only{display:none;}
+@media print{
+  body *{visibility:hidden;}
+  #reportePrintArea, #reportePrintArea *{visibility:visible;}
+  #reportePrintArea{display:block;position:absolute;top:0;left:0;width:100%;padding:0;color:#1a1310;font-family:var(--font-body);}
+  .print-header{margin-bottom:18px;}
+  .print-header h1{font-size:19px;margin-bottom:3px;}
+  .print-sub{font-size:11px;color:#6b5a4d;}
+  .print-kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px;}
+  .print-kpis div{border:1px solid #ddd;border-radius:8px;padding:8px 10px;}
+  .print-kpis span{display:block;font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:#8a7a6d;margin-bottom:3px;}
+  .print-kpis strong{font-size:14px;}
+  #reportePrintArea h2{font-size:13px;margin:18px 0 8px;}
+  .print-table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:6px;}
+  .print-table th,.print-table td{border:1px solid #ddd;padding:5px 8px;text-align:left;}
+  .print-table th{background:#f4ede4;}
+  @page{margin:16mm;}
+}
 .public-page{max-width:520px;margin:0 auto;padding:30px 18px 60px;}
 .public-card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:18px;overflow:hidden;box-shadow:var(--shadow-lg);}
 .public-gallery{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;}
@@ -425,6 +445,7 @@ tbody tr:hover{background:var(--color-surface-alt);}
 </div>
 
 <div id="modalRoot"></div>
+<div id="reportePrintArea" class="print-only"></div>
 <div class="toast-stack" id="toastStack"></div>
 
 <script>
@@ -2544,6 +2565,11 @@ function bindPageEvents(page){
   }
   if(page==='a-reportes'){
     document.getElementById('btnExportExcel').addEventListener('click', exportReporteExcel);
+    document.getElementById('btnExportPDF').addEventListener('click', exportReportePDF);
+    document.querySelectorAll('#reporteRangoTabs .pill-tab').forEach(btn=>btn.addEventListener('click', ()=>{
+      reporteRangoDias = Number(btn.dataset.dias);
+      navigate('a-reportes');
+    }));
   }
 }
 
@@ -2562,6 +2588,39 @@ function exportReporteExcel(){
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Ventas');
   XLSX.writeFile(wb, 'reporte_ventas.xlsx');
+}
+
+// PDF: usa el diálogo de impresión nativo del navegador ("Guardar como PDF")
+// sobre un contenido armado aparte — así el PDF muestra SOLO los datos del
+// reporte (sin sidebar, botones ni el resto del panel), con mejor calidad
+// que capturar la pantalla como imagen.
+function exportReportePDF(){
+  const r = datosReporte(reporteRangoDias);
+  const fecha = new Date().toLocaleDateString('es-GT', { day:'2-digit', month:'long', year:'numeric' });
+  const area = document.getElementById('reportePrintArea');
+  area.innerHTML = `
+    <div class="print-header">
+      <h1>La Cabaña — Reporte de Ventas</h1>
+      <div class="print-sub">Generado el ${fecha} · Tendencia de los últimos ${reporteRangoDias} días</div>
+    </div>
+    <div class="print-kpis">
+      <div><span>Ingresos Totales</span><strong>${money(r.totalIngresos)}</strong></div>
+      <div><span>Costos Totales</span><strong>${money(r.totalCostos)}</strong></div>
+      <div><span>Gastos Aplicados</span><strong>${money(r.totalGastos)}</strong></div>
+      <div><span>Ganancia Neta</span><strong>${money(r.totalGanancia)}</strong></div>
+      <div><span>Comisiones Totales</span><strong>${money(r.totalComisiones)}</strong></div>
+    </div>
+    <h2>Ganancia neta — últimos ${reporteRangoDias} días</h2>
+    ${svgLineaTendencia(r.porDia, r.etiquetasDias)}
+    <h2>Ventas por vendedora</h2>
+    <table class="print-table"><thead><tr><th>Vendedora</th><th>Ventas</th><th>Monto</th><th>Comisión</th></tr></thead><tbody>
+      ${r.vendEntries.length ? r.vendEntries.map(v=>`<tr><td>${v.nombre}</td><td>${v.count}</td><td>${money(v.monto)}</td><td>${money(v.comision)}</td></tr>`).join('') : `<tr><td colspan="4">Sin datos</td></tr>`}
+    </tbody></table>
+    <h2>Ganancia por categoría</h2>
+    <table class="print-table"><thead><tr><th>Categoría</th><th>Ganancia</th></tr></thead><tbody>
+      ${r.catEntries.length ? r.catEntries.map(([c,v])=>`<tr><td>${c}</td><td>${money(v)}</td></tr>`).join('') : `<tr><td colspan="2">Sin datos</td></tr>`}
+    </tbody></table>`;
+  setTimeout(()=>window.print(), 50);
 }
 
 // Backup completo del sistema en un solo Excel, una hoja por tabla — para
