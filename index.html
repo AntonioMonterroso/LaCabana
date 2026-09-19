@@ -463,7 +463,7 @@ const DB = {
   async fetchAll(){
     const [usuariosRes, usuariosPubRes, configRes, cajasRes, productosRes, fotosRes,
            categoriasRes, gastosRes, gastosAplicadosRes, ventaHistorialRes,
-           pagosRes, devolucionesRes, bitacoraRes, notifRes] = await Promise.all([
+           pagosRes, devolucionesRes, bitacoraRes, notifRes, clientesRes] = await Promise.all([
       sb.from('usuarios').select('*'),
       sb.from('usuarios_publico').select('*'),
       sb.from('configuracion').select('*'),
@@ -478,6 +478,7 @@ const DB = {
       sb.from('devoluciones').select('*').order('fecha_solicitud', { ascending:false }),
       sb.from('bitacora_cambios').select('*').order('created_at', { ascending:false }).limit(200),
       sb.from('notificaciones').select('*').order('created_at', { ascending:false }).limit(50),
+      sb.from('clientes').select('*').order('nombre'),
     ]);
     // La tabla "usuarios" solo trae la fila propia (o todas, si eres admin);
     // usuarios_publico trae nombre/género/rol de todo el mundo. Se combinan
@@ -499,6 +500,7 @@ const DB = {
       devoluciones: devolucionesRes.data || [],
       bitacora: bitacoraRes.data || [],
       notificaciones: notifRes.data || [],
+      clientes: clientesRes.data || [],
     };
   },
 
@@ -636,8 +638,11 @@ const DB = {
     if(error) return { ok:false, error: error.message };
     return { ok:true, data };
   },
-  async venderProducto(productoId, gastosSeleccionados){
-    const { data, error } = await sb.rpc('fn_vender_producto', { p_producto_id: productoId, p_gastos: gastosSeleccionados||[] });
+  async venderProducto(productoId, gastosSeleccionados, clienteId, estadoPago){
+    const { data, error } = await sb.rpc('fn_vender_producto', {
+      p_producto_id: productoId, p_gastos: gastosSeleccionados||[],
+      p_cliente_id: clienteId||null, p_estado_pago: estadoPago||'pagado'
+    });
     if(error) return { ok:false, error: error.message };
     return { ok:true, data };
   },
@@ -754,6 +759,48 @@ const DB = {
   },
   async resolverDevolucion(id, aprobar, notas){
     const { data, error } = await sb.rpc('fn_resolver_devolucion', { p_devolucion_id:id, p_aprobar:aprobar, p_notas: notas||null });
+    if(error) return { ok:false, error: error.message };
+    return { ok:true, data };
+  },
+
+  // ---------------- CLIENTES Y DEUDAS ----------------
+  // Sugerido, no obligatorio: una venta puede no tener cliente asociado y
+  // aun así quedar marcada "pendiente" de cobro.
+  async crearCliente(data){
+    const nombre = (data.nombre||'').trim(); if(!nombre) return { ok:false, error:'NOMBRE_VACIO' };
+    const { data:row, error } = await sb.from('clientes').insert({
+      nombre, telefono: data.telefono||null, notas: data.notas||null, created_by: this.currentUser().id
+    }).select().single();
+    if(error) return { ok:false, error: error.message };
+    return { ok:true, data:row };
+  },
+  async editarCliente(id, data){
+    const { data:row, error } = await sb.from('clientes').update(data).eq('id', id).select().single();
+    if(error) return { ok:false, error: error.message };
+    await sb.rpc('fn_registrar_bitacora', { p_tipo:'editar', p_tabla:'clientes', p_registro_id:id, p_descripcion:'Cliente editado: '+row.nombre });
+    return { ok:true, data:row };
+  },
+  async eliminarCliente(id){
+    const cliente = this.state.clientes.find(c=>c.id===id);
+    const { error } = await sb.from('clientes').delete().eq('id', id);
+    if(error) return { ok:false, error: error.message };
+    await sb.rpc('fn_registrar_bitacora', { p_tipo:'eliminar', p_tabla:'clientes', p_registro_id:id, p_descripcion:'Cliente eliminado: '+(cliente?cliente.nombre:'') });
+    return { ok:true };
+  },
+  // Resumen de compras de un cliente: cuántas, cuánto ha gastado en total, y cuánto debe.
+  resumenCliente(clienteId){
+    const compras = this.state.venta_historial.filter(v=>v.cliente_id===clienteId);
+    const totalGastado = compras.reduce((s,v)=>s+v.precio_venta,0);
+    const deuda = compras.filter(v=>v.estado_pago==='pendiente').reduce((s,v)=>s+v.precio_venta,0);
+    return { compras, totalGastado, deuda };
+  },
+  // Ventas con el producto ya entregado pero el cliente todavía no paga
+  // (con o sin cliente asignado — el admin ve todas; una vendedora, RLS solo le trae las suyas).
+  ventasPendientesDeCobro(){
+    return this.state.venta_historial.filter(v=>v.estado_pago==='pendiente' && v.estado_venta==='vendido');
+  },
+  async marcarPagoCliente(ventaId){
+    const { data, error } = await sb.rpc('fn_marcar_pago_cliente', { p_venta_id: ventaId });
     if(error) return { ok:false, error: error.message };
     return { ok:true, data };
   },
@@ -1011,6 +1058,8 @@ function icon(name){
     upload:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
     command:'<circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/>',
     help:'<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+    users2:'<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/>',
+    wallet:'<path d="M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5h-6a2 2 0 0 1 0-4h6z"/>',
   }[name] || '';
   return `<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${I}</svg>`;
 }
@@ -1083,6 +1132,7 @@ const NAV = {
     { page:'a-gastos', label:'Gastos', icon:'card' },
     { page:'a-comisiones', label:'Comisiones', icon:'percent' },
     { page:'a-devoluciones', label:'Devoluciones', icon:'undo' },
+    { page:'a-clientes', label:'Clientes', icon:'users2' },
     { section:'SISTEMA' },
     { page:'a-usuarios', label:'Usuarios', icon:'users' },
     { page:'a-reportes', label:'Reportes', icon:'trending' },
@@ -1104,6 +1154,7 @@ const PAGE_TITLES = {
   'a-gastos':['Gastos','Catálogo de gastos aplicables a una venta'],
   'a-comisiones':['Comisiones','Cuánto le debes a cada vendedora y qué ya le pagaste'],
   'a-devoluciones':['Devoluciones','Solicitudes de devolución'],
+  'a-clientes':['Clientes','Quién debe, cuánto y su historial de compras'],
   'a-usuarios':['Usuarios','Administradoras y vendedoras del sistema'],
   'a-reportes':['Reportes','Estadísticas de ventas y ganancias'],
   'a-bitacora':['Bitácora','Historial de cambios del sistema'],
@@ -1147,6 +1198,68 @@ function kpi(label, value, iconName, colorClass, sub){
     <div class="kpi-top"><div class="kpi-icon ${colorClass}">${icon(iconName)}</div><div class="kpi-label">${label}</div></div>
     <div class="kpi-value">${value}</div>${sub?`<div class="kpi-sub">${sub}</div>`:''}
   </div>`;
+}
+
+/* =====================================================================
+   GRÁFICAS DE REPORTES — SVG/CSS a mano (sin librerías externas), heredan
+   el acento de color personalizado del usuario y el resto de la paleta.
+===================================================================== */
+const REPORTE_COLORES = ['var(--mauve-600)','var(--forest-600)','var(--amber-500)','var(--sage-600)','var(--coffee-600)','var(--red-600)'];
+
+// Área + línea suave para una tendencia en el tiempo (ganancia neta por día).
+function svgLineaTendencia(puntos, etiquetas){
+  const w = 700, h = 150, padX = 6, padY = 10;
+  const max = Math.max(1, ...puntos);
+  const min = Math.min(0, ...puntos);
+  const rango = (max - min) || 1;
+  const stepX = puntos.length>1 ? (w - padX*2) / (puntos.length-1) : 0;
+  const coords = puntos.map((v,i)=>({ x: padX + i*stepX, y: h - padY - ((v-min)/rango)*(h-padY*2) }));
+  const linePath = coords.map((c,i)=> (i===0?'M':'L') + c.x.toFixed(1) + ' ' + c.y.toFixed(1)).join(' ');
+  const areaPath = coords.length ? `${linePath} L ${coords[coords.length-1].x.toFixed(1)} ${h-padY} L ${coords[0].x.toFixed(1)} ${h-padY} Z` : '';
+  const puntosSvg = coords.map((c,i)=>`<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="3" fill="var(--color-accent)">
+    <title>${etiquetas[i]}: ${money(puntos[i])}</title></circle>`).join('');
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:150px;display:block;" preserveAspectRatio="none">
+    <defs><linearGradient id="gradTendencia" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="var(--color-accent)" stop-opacity="0.32"/>
+      <stop offset="100%" stop-color="var(--color-accent)" stop-opacity="0"/>
+    </linearGradient></defs>
+    <path d="${areaPath}" fill="url(#gradTendencia)" stroke="none"/>
+    <path d="${linePath}" fill="none" stroke="var(--color-accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    ${puntosSvg}
+  </svg>
+  <div class="bar-chart-labels">${etiquetas.map((e,i)=> i%Math.ceil(etiquetas.length/10||1)===0 ? `<span>${e}</span>` : '<span></span>').join('')}</div>`;
+}
+
+// Donut de proporción (≤6 categorías se ven bien; con más, sigue siendo legible
+// gracias a la leyenda con montos — el detalle exacto además vive en la tabla de abajo).
+function svgDonut(data){
+  const total = data.reduce((s,d)=>s+d.value,0) || 1;
+  const r = 52, cx = 62, cy = 62, grosor = 22;
+  const circunferencia = 2*Math.PI*r;
+  let acumulado = 0;
+  const segmentos = data.map(d=>{
+    const frac = d.value/total;
+    const largo = Math.max(frac*circunferencia, frac>0?1:0);
+    const el = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${d.color}" stroke-width="${grosor}"
+      stroke-dasharray="${largo.toFixed(1)} ${(circunferencia-largo).toFixed(1)}" stroke-dashoffset="${(-acumulado).toFixed(1)}"
+      transform="rotate(-90 ${cx} ${cy})"><title>${d.label}: ${money(d.value)} (${(frac*100).toFixed(0)}%)</title></circle>`;
+    acumulado += largo;
+    return el;
+  }).join('');
+  return `<svg viewBox="0 0 124 124" style="width:124px;height:124px;flex-shrink:0;">${segmentos}</svg>`;
+}
+
+// Barras horizontales para comparar/rankear (ventas por vendedora).
+function horizontalBars(data){
+  const max = Math.max(1, ...data.map(d=>d.value));
+  return data.map(d=>`
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+      <div style="width:88px;font-size:11.5px;color:var(--color-text-muted);flex-shrink:0;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.label}</div>
+      <div style="flex:1;background:var(--color-surface-alt);border-radius:6px;overflow:hidden;height:18px;">
+        <div style="width:${Math.max(3,(d.value/max)*100)}%;height:100%;background:var(--color-accent);border-radius:6px;transition:width 300ms var(--ease-out);" data-tip="${money(d.value)}"></div>
+      </div>
+      <div style="width:74px;font-size:11.5px;font-weight:700;flex-shrink:0;">${money(d.value)}</div>
+    </div>`).join('');
 }
 // Tarjeta compacta: sin foto de entrada (a 100-1000 productos, cargar cientos de
 // miniaturas de golpe pesa). La foto y el detalle completo se ven al hacer clic
@@ -1268,15 +1381,19 @@ PAGES['v-catalogo'] = () => {
 // Exclusiva para vistas de vendedora: nunca muestra costo ni ganancia neta
 // (eso revelaría el margen), solo precio de venta y su propia comisión.
 function renderVentasTable(ventas, showVendedor){
-  return `<div class="table-wrap"><table><thead><tr><th>Producto</th>${showVendedor?'<th>Vendedora</th>':''}<th>Fecha</th><th>Precio</th><th>Tu comisión</th><th>Estado</th></tr></thead><tbody>
+  const cols = showVendedor ? 7 : 6;
+  return `<div class="table-wrap"><table><thead><tr><th>Producto</th>${showVendedor?'<th>Vendedora</th>':''}<th>Fecha</th><th>Precio</th><th>Tu comisión</th><th>Estado</th><th>Cliente pagó</th></tr></thead><tbody>
   ${ventas.length ? ventas.map(v=>{
     const vend = DB.state.usuarios.find(u=>u.id===v.vendedor_id);
     const info = v.estado_venta==='devuelto' ? {label:'Devuelto',cls:'badge-danger'} : {label:v.comision_estado==='pagada'?'Comisión pagada':'Comisión ganada', cls: v.comision_estado==='pagada'?'badge-info':'badge-success'};
+    const pendiente = v.estado_pago==='pendiente';
     return `<tr><td>${v.producto_nombre}<div class="text-faint" style="font-size:11px;">${v.producto_codigo}</div></td>
       ${showVendedor?`<td>${vend?vend.nombre:'—'}</td>`:''}
       <td>${fmtDateShort(v.fecha_venta)}</td><td>${money(v.precio_venta)}</td><td>${money(v.comision_monto)}</td>
-      <td><span class="badge ${info.cls}">${info.label}</span></td></tr>`;
-  }).join('') : `<tr class="empty-row"><td colspan="${showVendedor?6:5}">Sin ventas registradas</td></tr>`}
+      <td><span class="badge ${info.cls}">${info.label}</span></td>
+      <td><span class="badge ${pendiente?'badge-warning':'badge-success'}">${pendiente?'Pendiente':'Pagado'}</span>
+        ${pendiente?`<button class="btn btn-ghost btn-sm" style="padding:3px 8px;" data-action="marcar-pago-cliente" data-id="${v.id}">Marcar pagado</button>`:''}</td></tr>`;
+  }).join('') : `<tr class="empty-row"><td colspan="${cols}">Sin ventas registradas</td></tr>`}
   </tbody></table></div>`;
 }
 
@@ -1363,6 +1480,7 @@ PAGES['a-dashboard'] = () => {
 // productos archivados a punto de eliminarse para siempre.
 PAGES['a-pendientes'] = () => {
   const devs = DB.state.devoluciones.filter(d=>d.estado==='pendiente');
+  const deudas = DB.ventasPendientesDeCobro();
   const reservas = DB.state.productos
     .filter(p=>p.estado==='en_reserva')
     .map(p=>({ p, h: horasParaLiberar(p) }))
@@ -1373,16 +1491,28 @@ PAGES['a-pendientes'] = () => {
     .map(p=>({ p, d: DB.diasParaEliminar(p) }))
     .sort((a,b)=>a.d-b.d);
 
-  const seccionVacia = !devs.length && !reservas.length && !archivados.length;
+  const seccionVacia = !devs.length && !deudas.length && !reservas.length && !archivados.length;
   if(seccionVacia){
     return `<div class="panel text-center" style="padding:50px 20px;">
       <div style="font-size:34px;margin-bottom:10px;">✓</div>
       <div class="panel-title" style="margin-bottom:4px;">Todo al día</div>
-      <div class="text-muted">No hay devoluciones, reservas por vencer ni productos por eliminarse.</div>
+      <div class="text-muted">No hay devoluciones, cuentas por cobrar, reservas por vencer ni productos por eliminarse.</div>
     </div>`;
   }
 
   return `
+    ${deudas.length ? `<div class="panel">
+      <div class="panel-head"><div class="panel-title">Cuentas por cobrar</div><span class="badge badge-warning">${deudas.length}</span></div>
+      <div class="table-wrap"><table><thead><tr><th>Producto</th><th>Cliente</th><th>Monto</th><th>Fecha</th><th></th></tr></thead><tbody>
+      ${deudas.map(v=>{
+        const cliente = DB.state.clientes.find(c=>c.id===v.cliente_id);
+        return `<tr><td>${v.producto_nombre}</td><td>${cliente?cliente.nombre:'<span class="text-faint">Sin cliente asignado</span>'}</td>
+          <td>${money(v.precio_venta)}</td><td>${fmtDateShort(v.fecha_venta)}</td>
+          <td><button class="btn btn-primary btn-sm" data-action="marcar-pago-cliente" data-id="${v.id}">${icon('check')} Marcar pagado</button></td></tr>`;
+      }).join('')}
+      </tbody></table></div>
+    </div>` : ''}
+
     ${devs.length ? `<div class="panel">
       <div class="panel-head"><div class="panel-title">Devoluciones pendientes de aprobar</div><span class="badge badge-warning">${devs.length}</span></div>
       <div class="table-wrap"><table><thead><tr><th>Producto</th><th>Solicitó</th><th>Razón</th><th>Fecha</th><th></th></tr></thead><tbody>
@@ -1549,6 +1679,48 @@ PAGES['a-devoluciones'] = () => {
   </tbody></table></div>`;
 };
 
+// Clientes es opcional/sugerido: una venta puede quedar "pendiente de pago"
+// con o sin cliente asignado. Incluye las ventas del admin igual que las
+// de cualquier vendedora (venta_historial no distingue quién vendió para esto).
+PAGES['a-clientes'] = () => {
+  const pendientes = DB.ventasPendientesDeCobro();
+  const totalPorCobrar = pendientes.reduce((s,v)=>s+v.precio_venta,0);
+  const clientes = DB.state.clientes;
+  return `
+    <div class="kpi-grid">
+      ${kpi('Por cobrar (todo)', money(totalPorCobrar), 'wallet','icon-warn')}
+      ${kpi('Ventas pendientes de pago', pendientes.length, 'alert','icon-danger')}
+      ${kpi('Clientes registrados', clientes.length, 'users2','icon-info')}
+    </div>
+    <div class="panel">
+      <div class="panel-head"><div class="panel-title">Cuentas por cobrar</div><span class="badge badge-warning">${pendientes.length}</span></div>
+      <div class="table-wrap"><table><thead><tr><th>Producto</th><th>Cliente</th><th>Vendedora</th><th>Monto</th><th>Fecha</th><th></th></tr></thead><tbody>
+      ${pendientes.length ? pendientes.map(v=>{
+        const cliente = DB.state.clientes.find(c=>c.id===v.cliente_id);
+        const vend = DB.state.usuarios.find(u=>u.id===v.vendedor_id);
+        return `<tr><td>${v.producto_nombre}</td><td>${cliente?cliente.nombre:'<span class="text-faint">Sin cliente asignado</span>'}</td>
+          <td>${vend?vend.nombre:'—'}</td><td>${money(v.precio_venta)}</td><td>${fmtDateShort(v.fecha_venta)}</td>
+          <td><button class="btn btn-primary btn-sm" data-action="marcar-pago-cliente" data-id="${v.id}">${icon('check')} Marcar pagado</button></td></tr>`;
+      }).join('') : `<tr class="empty-row"><td colspan="6">No hay ventas pendientes de cobro</td></tr>`}
+      </tbody></table></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><div class="panel-title">Clientes</div><button class="btn btn-primary btn-sm" id="btnNuevoCliente">${icon('plus')} Nuevo Cliente</button></div>
+      <div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Compras</th><th>Total gastado</th><th>Deuda actual</th><th></th></tr></thead><tbody>
+      ${clientes.length ? clientes.map(c=>{
+        const r = DB.resumenCliente(c.id);
+        return `<tr><td>${c.nombre}</td><td>${c.telefono||'—'}</td><td>${r.compras.length}</td><td>${money(r.totalGastado)}</td>
+          <td>${r.deuda>0?`<strong style="color:var(--red-700);">${money(r.deuda)}</strong>`:money(0)}</td>
+          <td><div class="icon-actions-row" style="margin-top:0;">
+            <button class="icon-btn info" data-action="ver-historial-cliente" data-id="${c.id}" data-tip="Ver historial">${icon('file')}</button>
+            <button class="icon-btn edit" data-action="editar-cliente" data-id="${c.id}" data-tip="Editar">${icon('edit')}</button>
+            <button class="icon-btn delete" data-action="eliminar-cliente" data-id="${c.id}" data-tip="Eliminar">${icon('trash')}</button>
+          </div></td></tr>`;
+      }).join('') : `<tr class="empty-row"><td colspan="6">Sin clientes registrados todavía — se pueden crear aquí o directo al vender un producto</td></tr>`}
+      </tbody></table></div>
+    </div>`;
+};
+
 PAGES['a-usuarios'] = () => `
   <div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>% Comisión</th><th>Activo</th><th></th></tr></thead><tbody>
   ${DB.state.usuarios.map(u=>`<tr><td>${u.nombre}</td><td>${u.email}</td><td><span class="badge badge-info">${DB.rolLabel(u)}</span></td>
@@ -1591,7 +1763,10 @@ PAGES['a-config'] = () => {
   </div>`;
 };
 
-PAGES['a-reportes'] = () => {
+// Calcula todos los agregados de Reportes para una ventana de N días — la
+// usan tanto el render de la página como los exportadores (Excel/PDF), así
+// nunca se desincronizan.
+function datosReporte(dias){
   const ventas = DB.state.venta_historial.filter(v=>v.estado_venta==='vendido');
   const totalIngresos = ventas.reduce((s,v)=>s+v.precio_venta,0);
   const totalCostos = ventas.reduce((s,v)=>s+v.costo,0);
@@ -1601,39 +1776,61 @@ PAGES['a-reportes'] = () => {
 
   const porVendedor = {};
   ventas.forEach(v=>{ porVendedor[v.vendedor_id] = porVendedor[v.vendedor_id] || {count:0,monto:0,comision:0}; porVendedor[v.vendedor_id].count++; porVendedor[v.vendedor_id].monto+=v.precio_venta; porVendedor[v.vendedor_id].comision+=v.comision_monto; });
+  const vendEntries = Object.entries(porVendedor).map(([id,d])=>({ id, nombre:(DB.state.usuarios.find(u=>u.id===id)||{}).nombre||'—', ...d })).sort((a,b)=>b.monto-a.monto);
 
   const porCategoria = {};
   ventas.forEach(v=>{ const c=v.categoria||'Sin categoría'; porCategoria[c]=(porCategoria[c]||0)+v.ganancia_neta; });
+  const catEntries = Object.entries(porCategoria).sort((a,b)=>b[1]-a[1]);
 
-  const dias = [...Array(14)].map((_,i)=>{ const d=new Date(); d.setDate(d.getDate()-(13-i)); d.setHours(0,0,0,0); return d; });
-  const porDia = dias.map(d=>{ const next=new Date(d); next.setDate(next.getDate()+1); return ventas.filter(v=>{const f=new Date(v.fecha_venta); return f>=d && f<next;}).reduce((s,v)=>s+v.ganancia_neta,0); });
-  const maxDia = Math.max(1, ...porDia);
+  const diasArr = [...Array(dias)].map((_,i)=>{ const d=new Date(); d.setDate(d.getDate()-(dias-1-i)); d.setHours(0,0,0,0); return d; });
+  const porDia = diasArr.map(d=>{ const next=new Date(d); next.setDate(next.getDate()+1); return ventas.filter(v=>{const f=new Date(v.fecha_venta); return f>=d && f<next;}).reduce((s,v)=>s+v.ganancia_neta,0); });
+  const etiquetasDias = diasArr.map(d=>d.toLocaleDateString('es-GT',{day:'2-digit',month:'2-digit'}));
 
+  return { ventas, totalIngresos, totalCostos, totalGastos, totalGanancia, totalComisiones, vendEntries, catEntries, diasArr, porDia, etiquetasDias };
+}
+
+let reporteRangoDias = 14;
+PAGES['a-reportes'] = () => {
+  const r = datosReporte(reporteRangoDias);
   return `
     <div class="kpi-grid">
-      ${kpi('Ingresos Totales', money(totalIngresos),'trending','icon-info')}
-      ${kpi('Costos Totales', money(totalCostos),'box','icon-neutral')}
-      ${kpi('Gastos Aplicados', money(totalGastos),'card','icon-warn')}
-      ${kpi('Ganancia Neta', money(totalGanancia),'percent','icon-success')}
-      ${kpi('Comisiones Totales', money(totalComisiones),'users','icon-info')}
+      ${kpi('Ingresos Totales', money(r.totalIngresos),'trending','icon-info')}
+      ${kpi('Costos Totales', money(r.totalCostos),'box','icon-neutral')}
+      ${kpi('Gastos Aplicados', money(r.totalGastos),'card','icon-warn')}
+      ${kpi('Ganancia Neta', money(r.totalGanancia),'percent','icon-success')}
+      ${kpi('Comisiones Totales', money(r.totalComisiones),'users','icon-info')}
     </div>
     <div class="panel">
-      <div class="panel-head"><div class="panel-title">Ganancia neta — últimos 14 días</div>
-        <button class="btn btn-secondary btn-sm" id="btnExportExcel">${icon('download')} Exportar Excel</button></div>
-      <div class="bar-chart">${porDia.map(v=>`<div class="bar" style="height:${Math.max(2,(v/maxDia)*130)}px" data-tip="${money(v)}"></div>`).join('')}</div>
-      <div class="bar-chart-labels">${dias.map(d=>`<span>${d.toLocaleDateString('es-GT',{day:'2-digit',month:'2-digit'})}</span>`).join('')}</div>
+      <div class="panel-head">
+        <div class="panel-title">Ganancia neta en el tiempo</div>
+        <div class="panel-actions">
+          <div class="pill-tabs mb-0" id="reporteRangoTabs">
+            ${[7,14,30,90].map(n=>`<button type="button" class="pill-tab ${reporteRangoDias===n?'active':''}" data-dias="${n}">${n}d</button>`).join('')}
+          </div>
+          <button class="btn btn-secondary btn-sm" id="btnExportExcel">${icon('download')} Excel</button>
+          <button class="btn btn-secondary btn-sm" id="btnExportPDF">${icon('file')} PDF</button>
+        </div>
+      </div>
+      ${svgLineaTendencia(r.porDia, r.etiquetasDias)}
     </div>
     <div class="form-row">
       <div class="panel">
         <div class="panel-title" style="margin-bottom:12px;">Ventas por vendedora</div>
+        ${r.vendEntries.length ? `<div class="mb-16">${horizontalBars(r.vendEntries.map(v=>({label:v.nombre, value:v.monto})))}</div>` : ''}
         <div class="table-wrap"><table><thead><tr><th>Vendedora</th><th>Ventas</th><th>Monto</th><th>Comisión</th></tr></thead><tbody>
-        ${Object.keys(porVendedor).length ? Object.entries(porVendedor).map(([id,d])=>{ const u=DB.state.usuarios.find(x=>x.id===id); return `<tr><td>${u?u.nombre:'—'}</td><td>${d.count}</td><td>${money(d.monto)}</td><td>${money(d.comision)}</td></tr>`; }).join('') : `<tr class="empty-row"><td colspan="4">Sin datos</td></tr>`}
+        ${r.vendEntries.length ? r.vendEntries.map(v=>`<tr><td>${v.nombre}</td><td>${v.count}</td><td>${money(v.monto)}</td><td>${money(v.comision)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="4">Sin datos</td></tr>`}
         </tbody></table></div>
       </div>
       <div class="panel">
         <div class="panel-title" style="margin-bottom:12px;">Ganancia por categoría</div>
+        ${r.catEntries.length ? `<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:14px;">
+          ${svgDonut(r.catEntries.map(([c,v],i)=>({label:c, value:Math.max(v,0), color:REPORTE_COLORES[i%REPORTE_COLORES.length]})))}
+          <div style="flex:1;min-width:140px;">${r.catEntries.map(([c,v],i)=>`<div style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px;">
+            <span style="width:10px;height:10px;border-radius:50%;background:${REPORTE_COLORES[i%REPORTE_COLORES.length]};flex-shrink:0;"></span>${c}
+            <span class="text-faint" style="margin-left:auto;">${money(v)}</span></div>`).join('')}</div>
+        </div>` : ''}
         <div class="table-wrap"><table><thead><tr><th>Categoría</th><th>Ganancia</th></tr></thead><tbody>
-        ${Object.keys(porCategoria).length ? Object.entries(porCategoria).sort((a,b)=>b[1]-a[1]).map(([c,v])=>`<tr><td>${c}</td><td>${money(v)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="2">Sin datos</td></tr>`}
+        ${r.catEntries.length ? r.catEntries.map(([c,v])=>`<tr><td>${c}</td><td>${money(v)}</td></tr>`).join('') : `<tr class="empty-row"><td colspan="2">Sin datos</td></tr>`}
         </tbody></table></div>
       </div>
     </div>`;
@@ -1840,14 +2037,51 @@ function modalVender(p){
         ${verCosto ? `<div class="calc-row total"><span>Ganancia neta</span><span id="ventaGanancia">${money(p.precio_venta-p.costo)}</span></div>` : ''}
         <div class="calc-row comision"><span>${esAdmin?'Tu ganancia (100%)':'Tu comisión ('+pctComision+'%)'}</span><span id="ventaComision">${money(Math.max(p.precio_venta-p.costo,0)*pctComision/100)}</span></div>
       </div>
+      <div class="form-group mt-16"><label>Cliente (opcional)</label>
+        <select id="ventaCliente">
+          <option value="">Sin cliente asignado</option>
+          ${DB.state.clientes.map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}
+          <option value="__nuevo__">+ Crear nuevo cliente…</option>
+        </select>
+        <div id="ventaNuevoClienteBox" hidden class="form-row mt-8">
+          <input id="ventaNuevoClienteNombre" placeholder="Nombre del cliente">
+          <input id="ventaNuevoClienteTelefono" placeholder="Teléfono (opcional)">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>¿Ya pagó?</label>
+        <div class="pill-tabs mb-0" id="ventaEstadoPagoTabs">
+          <button type="button" class="pill-tab active" data-valor="pagado">Ya pagó</button>
+          <button type="button" class="pill-tab" data-valor="pendiente">Pendiente (fiado)</button>
+        </div>
+      </div>
     </div>
     <div class="modal-foot"><button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="btnConfirmarVenta">${icon('check')} Confirmar Venta</button></div>`);
   document.querySelectorAll('.gasto-check, .gasto-monto').forEach(el=>el.addEventListener('input', calcTotal));
+  document.getElementById('ventaCliente').addEventListener('change', e=>{
+    document.getElementById('ventaNuevoClienteBox').hidden = e.target.value !== '__nuevo__';
+  });
+  let estadoPago = 'pagado';
+  document.querySelectorAll('#ventaEstadoPagoTabs .pill-tab').forEach(btn=>btn.addEventListener('click', ()=>{
+    document.querySelectorAll('#ventaEstadoPagoTabs .pill-tab').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    estadoPago = btn.dataset.valor;
+  }));
   document.getElementById('btnConfirmarVenta').addEventListener('click', async ()=>{
     const gastos = [];
     document.querySelectorAll('.gasto-check').forEach(chk=>{ if(chk.checked) gastos.push({ gasto_id:chk.dataset.id, nombre:chk.dataset.nombre, monto:Number(document.querySelector(`.gasto-monto[data-id="${chk.dataset.id}"]`).value)||0 }); });
     const btnV = document.getElementById('btnConfirmarVenta'); btnV.disabled = true;
-    const res = await DB.venderProducto(p.id, gastos);
+
+    let clienteId = document.getElementById('ventaCliente').value || null;
+    if(clienteId === '__nuevo__'){
+      const nombreNuevo = document.getElementById('ventaNuevoClienteNombre').value.trim();
+      if(!nombreNuevo){ toast('Escribe el nombre del nuevo cliente (o deja "Sin cliente asignado")','danger'); btnV.disabled=false; return; }
+      const resCliente = await DB.crearCliente({ nombre:nombreNuevo, telefono:document.getElementById('ventaNuevoClienteTelefono').value.trim() });
+      if(!resCliente.ok){ toast('No se pudo crear el cliente: '+resCliente.error,'danger'); btnV.disabled=false; return; }
+      clienteId = resCliente.data.id;
+    }
+
+    const res = await DB.venderProducto(p.id, gastos, clienteId, estadoPago);
     if(res.ok){ toast('¡Venta registrada! Ganaste '+money(res.data.comision_monto),'success'); closeModal(); await refresh(); }
     else { toast('No se pudo vender: '+(res.error==='PRODUCTO_NO_DISPONIBLE'?'otra persona ya lo tomó':res.error),'danger'); closeModal(); await refresh(); }
   });
@@ -2007,6 +2241,45 @@ function modalCategoria(categoria){
     if(!res.ok) return toast(res.error==='YA_EXISTE'?'Ya existe una categoría con ese nombre':(res.error==='NOMBRE_VACIO'?'Escribe un nombre':res.error),'danger');
     toast('Categoría guardada','success'); closeModal(); await refresh();
   });
+}
+
+function modalCliente(cliente){
+  const edit = !!cliente;
+  openModal(`
+    <div class="modal-head"><div class="modal-title">${edit?'Editar':'Nuevo'} Cliente</div><button class="icon-btn" onclick="closeModal()">${icon('x')}</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label>Nombre *</label><input id="clNombre" value="${edit?cliente.nombre:''}" placeholder="Ej: María Pérez"></div>
+      <div class="form-group"><label>Teléfono</label><input id="clTelefono" value="${edit?(cliente.telefono||''):''}" placeholder="Ej: 5555-5555"></div>
+      <div class="form-group"><label>Notas</label><textarea id="clNotas" rows="2" placeholder="Opcional">${edit?(cliente.notas||''):''}</textarea></div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="btnGuardarCliente">${edit?'Guardar':'Crear'}</button></div>`);
+  document.getElementById('btnGuardarCliente').addEventListener('click', async ()=>{
+    const data = { nombre:document.getElementById('clNombre').value.trim(), telefono:document.getElementById('clTelefono').value.trim()||null, notas:document.getElementById('clNotas').value.trim()||null };
+    if(!data.nombre) return toast('El nombre es obligatorio','danger');
+    const res = edit ? await DB.editarCliente(cliente.id, data) : await DB.crearCliente(data);
+    if(!res.ok) return toast('No se pudo guardar: '+res.error,'danger');
+    toast('Cliente guardado','success'); closeModal(); await refresh();
+  });
+}
+
+function modalHistorialCliente(cliente){
+  const r = DB.resumenCliente(cliente.id);
+  openModal(`
+    <div class="modal-head"><div class="modal-title">${icon('users2')} ${cliente.nombre}</div><button class="icon-btn" onclick="closeModal()">${icon('x')}</button></div>
+    <div class="modal-body">
+      ${cliente.telefono?`<div class="text-muted mb-0">${cliente.telefono}</div>`:''}
+      <div class="calc-box mt-16">
+        <div class="calc-row"><span>Compras totales</span><span>${r.compras.length}</span></div>
+        <div class="calc-row"><span>Total gastado</span><span>${money(r.totalGastado)}</span></div>
+        <div class="calc-row total" style="${r.deuda>0?'color:var(--red-700);':''}"><span>Deuda actual</span><span>${money(r.deuda)}</span></div>
+      </div>
+      <div class="table-wrap mt-16"><table><thead><tr><th>Producto</th><th>Fecha</th><th>Monto</th><th>Estado</th><th></th></tr></thead><tbody>
+      ${r.compras.length ? r.compras.slice().sort((a,b)=>new Date(b.fecha_venta)-new Date(a.fecha_venta)).map(v=>`<tr><td>${v.producto_nombre}</td><td>${fmtDateShort(v.fecha_venta)}</td><td>${money(v.precio_venta)}</td>
+        <td><span class="badge ${v.estado_pago==='pagado'?'badge-success':'badge-warning'}">${v.estado_pago==='pagado'?'Pagado':'Pendiente'}</span></td>
+        <td>${v.estado_pago==='pendiente'?`<button class="btn btn-primary btn-sm" data-action="marcar-pago-cliente" data-id="${v.id}">${icon('check')} Marcar pagado</button>`:''}</td></tr>`).join('')
+        : `<tr class="empty-row"><td colspan="5">Sin compras registradas todavía</td></tr>`}
+      </tbody></table></div>
+    </div>`, 'lg');
 }
 
 function modalGasto(gasto){
@@ -2252,6 +2525,7 @@ function bindPageEvents(page){
   }
   if(page==='a-cajas') document.getElementById('btnNuevaCaja').addEventListener('click', modalNuevaCaja);
   if(page==='a-categorias') document.getElementById('btnNuevaCategoria').addEventListener('click', ()=>modalCategoria(null));
+  if(page==='a-clientes') document.getElementById('btnNuevoCliente').addEventListener('click', ()=>modalCliente(null));
   if(page==='a-gastos') document.getElementById('btnNuevoGasto').addEventListener('click', ()=>modalGasto(null));
   if(page==='a-config'){
     document.getElementById('btnBackupCompleto').addEventListener('click', exportBackupCompleto);
@@ -2379,6 +2653,10 @@ document.getElementById('mainContent').addEventListener('click', async e=>{
   else if(action==='pagar-comision'){ modalPagarComision(id); }
   else if(action==='aprobar-dev'){ const r=await DB.resolverDevolucion(id,true); if(r.ok){ toast('Devolución aprobada','success'); await refresh(); } else toast('No se pudo: '+r.error,'danger'); }
   else if(action==='rechazar-dev'){ const r=await DB.resolverDevolucion(id,false); if(r.ok){ toast('Devolución rechazada'); await refresh(); } else toast('No se pudo: '+r.error,'danger'); }
+  else if(action==='marcar-pago-cliente'){ const r=await DB.marcarPagoCliente(id); if(r.ok){ toast('Pago del cliente registrado','success'); closeModal(); await refresh(); } else toast('No se pudo: '+r.error,'danger'); }
+  else if(action==='editar-cliente'){ modalCliente(DB.state.clientes.find(c=>c.id===id)); }
+  else if(action==='eliminar-cliente'){ if(confirm('¿Eliminar este cliente? Su historial de compras se conserva, solo deja de aparecer en el catálogo.')){ const r=await DB.eliminarCliente(id); if(r.ok){ toast('Cliente eliminado','success'); await refresh(); } else toast('No se pudo eliminar: '+r.error,'danger'); } }
+  else if(action==='ver-historial-cliente'){ modalHistorialCliente(DB.state.clientes.find(c=>c.id===id)); }
   else if(action==='toggle-seccion'){ const key=btn.dataset.key; if(expandedSections.has(key)) expandedSections.delete(key); else expandedSections.add(key); navigate(currentPage); }
 });
 
@@ -2390,9 +2668,10 @@ document.getElementById('mainContent').addEventListener('click', async e=>{
 function contarPendientes(){
   if(!DB.state || !DB.isAdmin()) return 0;
   const devs = DB.state.devoluciones.filter(d=>d.estado==='pendiente').length;
+  const deudas = DB.ventasPendientesDeCobro().length;
   const reservasUrgentes = DB.state.productos.filter(p=>{ const h=horasParaLiberar(p); return h!==null && h<=6; }).length;
   const archivadosUrgentes = DB.state.productos.filter(p=>{ const d=DB.diasParaEliminar(p); return d!==null && d<=5; }).length;
-  return devs + reservasUrgentes + archivadosUrgentes;
+  return devs + deudas + reservasUrgentes + archivadosUrgentes;
 }
 function refreshBadges(){
   const cur = DB.currentUser(); if(!cur) return;
