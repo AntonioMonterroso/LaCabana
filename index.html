@@ -7,8 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@500;600;700&family=Fira+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSQX0FslNhTDadL4O5SAGapGt4FodqL8My0mA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js" integrity="sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" integrity="sha512-r22gChDnGvBylk90+2e/ycr3RVrDi8DIOkIGNhJlKfuyQM4tIRAI062MaV8sfjQKYVGjOBaZBOA87z+IhZE9DA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
 
@@ -234,7 +235,8 @@ tbody tr:hover{background:var(--color-surface-alt);}
 .modal-overlay.open .modal{transform:scale(1) translateY(0);opacity:1;}
 .modal.modal-lg{max-width:800px;}
 .modal-head{display:flex;justify-content:space-between;align-items:center;padding:18px 22px;border-bottom:1px solid var(--color-border);position:sticky;top:0;background:var(--color-surface);z-index:2;}
-.modal-title{font-size:16px;font-weight:700;}
+.modal-title{font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;}
+.modal-title svg{width:18px;height:18px;stroke:currentColor;flex-shrink:0;}
 .modal-body{padding:22px;}
 .modal-foot{display:flex;justify-content:flex-end;gap:10px;padding:16px 22px;border-top:1px solid var(--color-border);}
 
@@ -318,7 +320,20 @@ tbody tr:hover{background:var(--color-surface-alt);}
 .public-page{max-width:520px;margin:0 auto;padding:30px 18px 60px;}
 .public-card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:18px;overflow:hidden;box-shadow:var(--shadow-lg);}
 .public-gallery{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;}
-.public-gallery img{width:100%;flex-shrink:0;scroll-snap-align:start;aspect-ratio:4/3;object-fit:cover;}
+.public-gallery img{width:100%;flex-shrink:0;scroll-snap-align:start;aspect-ratio:4/3;object-fit:cover;cursor:zoom-in;}
+/* ---------- lightbox (zoom de fotos) ---------- */
+.lightbox-overlay{position:fixed;inset:0;background:rgba(15,10,8,.92);z-index:3000;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 200ms var(--ease-out);}
+.lightbox-overlay.open{opacity:1;}
+.lightbox-img{max-width:90vw;max-height:88vh;object-fit:contain;border-radius:8px;transform:scale(.96);transition:transform 200ms var(--ease-out);}
+.lightbox-overlay.open .lightbox-img{transform:scale(1);}
+.lightbox-close{position:absolute;top:18px;right:18px;width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.14);color:#fff;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 150ms var(--ease-out);}
+.lightbox-close:hover{background:rgba(255,255,255,.24);}
+.lightbox-close svg{width:18px;height:18px;stroke:currentColor;}
+.lightbox-nav{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.14);color:#fff;border:none;cursor:pointer;font-size:22px;line-height:1;display:flex;align-items:center;justify-content:center;transition:background 150ms var(--ease-out);}
+.lightbox-nav:hover{background:rgba(255,255,255,.24);}
+.lightbox-nav.prev{left:18px;}
+.lightbox-nav.next{right:18px;}
+.lightbox-count{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.78);font-size:12.5px;}
 .public-body{padding:20px;}
 .qr-box{text-align:center;}
 .theme-swatch-grid{display:flex;gap:12px;flex-wrap:wrap;}
@@ -391,6 +406,7 @@ tbody tr:hover{background:var(--color-surface-alt);}
       </div>
       <div class="topbar-right">
         <button class="icon-btn" id="searchBtn" data-tip="Buscar (Ctrl/Cmd+K)"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
+        <button class="icon-btn" id="ayudaBtn" data-tip="Ayuda"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></button>
         <div class="pos-rel">
           <button class="icon-btn" id="notifBtn" data-tip="Notificaciones"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="bell-dot" id="bellDot" hidden></span></button>
           <div class="dropdown" id="notifDropdown" style="width:320px;max-height:400px;overflow-y:auto;"></div>
@@ -561,6 +577,11 @@ const DB = {
   },
   async eliminarProducto(id){
     const prod = this.state.productos.find(x=>x.id===id);
+    // Borra primero los archivos reales del bucket (la fila de fotos_producto
+    // se va sola por el "on delete cascade" al borrar el producto, pero eso
+    // nunca toca Storage — si no se hace aquí, el archivo queda huérfano).
+    const { data: archivos } = await sb.storage.from('productos-fotos').list(id);
+    if(archivos && archivos.length) await sb.storage.from('productos-fotos').remove(archivos.map(f=>id+'/'+f.name));
     const { error } = await sb.from('productos').delete().eq('id', id);
     if(error) return { ok:false, error: error.message };
     await sb.rpc('fn_registrar_bitacora', { p_tipo:'eliminar', p_tabla:'productos', p_registro_id:id, p_descripcion:'Producto eliminado: '+(prod?prod.nombre:'') });
@@ -763,8 +784,13 @@ const DB = {
 
   async guardarConfiguracion(data){
     for(const [clave, valor] of Object.entries(data)){
-      const { error } = await sb.from('configuracion').update({ valor:String(valor) }).eq('clave', clave);
+      // No hay política de INSERT en "configuracion" a propósito (solo UPDATE):
+      // si la clave no existe todavía (falta correr una migración), el UPDATE
+      // "funciona" pero no toca ninguna fila — con .select() lo detectamos y
+      // avisamos, en vez de decir "guardado" cuando en realidad no se guardó nada.
+      const { data:filas, error } = await sb.from('configuracion').update({ valor:String(valor) }).eq('clave', clave).select();
       if(error) return { ok:false, error: error.message };
+      if(!filas || !filas.length) return { ok:false, error:'La clave "'+clave+'" todavía no existe en la base de datos — falta correr la migración que la agrega.' };
     }
     Object.assign(this.state.configuracion, data);
     await sb.rpc('fn_registrar_bitacora', { p_tipo:'editar', p_tabla:'configuracion', p_registro_id:null, p_descripcion:'Configuración actualizada' });
@@ -984,6 +1010,7 @@ function icon(name){
     copy:'<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
     upload:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
     command:'<circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/>',
+    help:'<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
   }[name] || '';
   return `<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${I}</svg>`;
 }
@@ -1044,16 +1071,19 @@ const NAV = {
     { page:'v-comisiones', label:'Mis Comisiones', icon:'percent' },
   ],
   administrador: [
-    { section:'ADMINISTRACIÓN' },
+    { section:'PANEL' },
     { page:'a-dashboard', label:'Dashboard', icon:'dashboard' },
     { page:'a-pendientes', label:'Pendientes', icon:'alert' },
+    { section:'INVENTARIO' },
     { page:'a-inventario', label:'Inventario', icon:'box' },
     { page:'a-nuevo', label:'Nuevo Producto', icon:'plus' },
-    { page:'a-cajas', label:'Cajas', icon:'crate' },
     { page:'a-categorias', label:'Categorías', icon:'tag' },
+    { section:'VENTAS Y DINERO' },
+    { page:'a-cajas', label:'Cajas', icon:'crate' },
     { page:'a-gastos', label:'Gastos', icon:'card' },
     { page:'a-comisiones', label:'Comisiones', icon:'percent' },
     { page:'a-devoluciones', label:'Devoluciones', icon:'undo' },
+    { section:'SISTEMA' },
     { page:'a-usuarios', label:'Usuarios', icon:'users' },
     { page:'a-reportes', label:'Reportes', icon:'trending' },
     { page:'a-bitacora', label:'Bitácora', icon:'file' },
@@ -1543,6 +1573,11 @@ PAGES['a-bitacora'] = () => `
 PAGES['a-config'] = () => {
   const c = DB.state.configuracion;
   return `<div class="panel" style="max-width:600px;">
+    <div class="panel-head"><div class="panel-title">Backup completo</div></div>
+    <p class="text-muted mb-0">Descarga una copia de todo el sistema en un Excel (una hoja por cada tabla: productos, ventas, comisiones, usuarios, etc.). No reemplaza los backups automáticos de Supabase — es un respaldo extra que puedes guardar tú misma cuando quieras.</p>
+    <button class="btn btn-secondary mt-16" id="btnBackupCompleto">${icon('download')} Descargar Backup (Excel)</button>
+  </div>
+  <div class="panel" style="max-width:600px;">
     <form id="formConfig">
       <div class="form-group"><label>Símbolo de moneda</label><input id="cfMoneda" value="${c.moneda_simbolo}"></div>
       <div class="form-group"><label>Días para archivar un producto vendido (elimina solo sus fotos)</label><input type="number" id="cfDias" value="${c.dias_archivo_productos_vendidos}"></div>
@@ -1584,7 +1619,7 @@ PAGES['a-reportes'] = () => {
     </div>
     <div class="panel">
       <div class="panel-head"><div class="panel-title">Ganancia neta — últimos 14 días</div>
-        <button class="btn btn-secondary btn-sm" id="btnExportCSV">${icon('download')} Exportar CSV</button></div>
+        <button class="btn btn-secondary btn-sm" id="btnExportExcel">${icon('download')} Exportar Excel</button></div>
       <div class="bar-chart">${porDia.map(v=>`<div class="bar" style="height:${Math.max(2,(v/maxDia)*130)}px" data-tip="${money(v)}"></div>`).join('')}</div>
       <div class="bar-chart-labels">${dias.map(d=>`<span>${d.toLocaleDateString('es-GT',{day:'2-digit',month:'2-digit'})}</span>`).join('')}</div>
     </div>
@@ -1626,6 +1661,40 @@ function closeModal(){
   setTimeout(()=>{ document.getElementById('modalRoot').innerHTML=''; }, 180);
 }
 
+// Zoom de fotos: clic en cualquier imagen de una galería la abre en grande,
+// con flechas (o ← →) para pasar a la siguiente si hay más de una.
+function openLightbox(urls, startIndex){
+  let i = startIndex || 0;
+  const overlay = document.createElement('div');
+  overlay.className = 'lightbox-overlay';
+  overlay.innerHTML = `
+    <button class="lightbox-close" aria-label="Cerrar">${icon('x')}</button>
+    ${urls.length>1?`<button class="lightbox-nav prev" aria-label="Anterior">‹</button><button class="lightbox-nav next" aria-label="Siguiente">›</button>`:''}
+    <img class="lightbox-img" src="${urls[i]}">
+    ${urls.length>1?`<div class="lightbox-count">${i+1} / ${urls.length}</div>`:''}`;
+  document.body.appendChild(overlay);
+  requestAnimationFrame(()=>requestAnimationFrame(()=>overlay.classList.add('open')));
+  const update = () => {
+    overlay.querySelector('.lightbox-img').src = urls[i];
+    const count = overlay.querySelector('.lightbox-count'); if(count) count.textContent = (i+1)+' / '+urls.length;
+  };
+  const onKey = e => {
+    if(e.key==='Escape') close();
+    else if(e.key==='ArrowLeft' && urls.length>1){ i=(i-1+urls.length)%urls.length; update(); }
+    else if(e.key==='ArrowRight' && urls.length>1){ i=(i+1)%urls.length; update(); }
+  };
+  const close = () => {
+    overlay.classList.remove('open');
+    document.removeEventListener('keydown', onKey);
+    setTimeout(()=>overlay.remove(), 200);
+  };
+  document.addEventListener('keydown', onKey);
+  overlay.addEventListener('click', e=>{ if(e.target===overlay) close(); });
+  overlay.querySelector('.lightbox-close').addEventListener('click', close);
+  overlay.querySelector('.lightbox-nav.prev')?.addEventListener('click', ()=>{ i=(i-1+urls.length)%urls.length; update(); });
+  overlay.querySelector('.lightbox-nav.next')?.addEventListener('click', ()=>{ i=(i+1)%urls.length; update(); });
+}
+
 function modalVerFicha(p){
   const fotos = DB.fotosDe(p.id,'inventario');
   const info = estadoInfo(p.estado);
@@ -1633,7 +1702,7 @@ function modalVerFicha(p){
   openModal(`
     <div class="modal-head"><div class="modal-title">Ficha del Producto</div><button class="icon-btn" onclick="closeModal()">${icon('x')}</button></div>
     <div class="modal-body">
-      ${fotos.length?`<div class="public-gallery" style="border-radius:12px;margin-bottom:14px;">${fotos.map(f=>`<img src="${f.url_foto}">`).join('')}</div>`:''}
+      ${fotos.length?`<div class="public-gallery" style="border-radius:12px;margin-bottom:14px;">${fotos.map((f,i)=>`<img src="${f.url_foto}" class="ficha-foto" data-i="${i}">`).join('')}</div>`:''}
       <div class="flex-between"><h3>${p.nombre}</h3><span class="badge ${info.cls}">${info.label}</span></div>
       <div class="text-faint" style="margin:4px 0 12px;">${p.codigo} · ${p.categoria||'Sin categoría'}</div>
       ${renderVideoEmbed(p.url_video)}
@@ -1645,6 +1714,7 @@ function modalVerFicha(p){
       </div>
       <p class="text-muted mt-16">${p.descripcion||'Sin descripción.'}</p>
     </div>`);
+  document.querySelectorAll('.ficha-foto').forEach(img=>img.addEventListener('click', ()=>openLightbox(fotos.map(f=>f.url_foto), Number(img.dataset.i))));
 }
 
 function modalQR(p){
@@ -1798,6 +1868,84 @@ function modalNuevaCaja(){
     const res = await DB.crearCaja({ nombre, costo_total_pagado:document.getElementById('ncCosto').value, notas:document.getElementById('ncNotas').value });
     if(res.ok){ toast('Caja creada','success'); closeModal(); await refresh(); }
     else toast('No se pudo crear: '+res.error,'danger');
+  });
+}
+
+/* =====================================================================
+   AYUDA — guía general del sistema, editable por el admin desde el
+   panel. Vive en configuracion.ayuda_contenido (texto plano con "## " para
+   subtítulos y "- " para viñetas); AYUDA_DEFAULT es solo el respaldo por si
+   la migración 04 todavía no corrió y esa clave no existe.
+===================================================================== */
+const AYUDA_DEFAULT = `## Qué es La Cabaña
+Panel para administrar el inventario y las ventas de productos únicos (bolsas, relojes, accesorios...) entre una administradora y varias vendedoras. Cada producto es único — no hay existencias ni cantidades, solo estados.
+
+## Roles
+- Administradora: control total — crea productos, cajas, categorías y gastos, ve todo el negocio, aprueba devoluciones y paga comisiones.
+- Vendedora: aparta y vende productos disponibles, ve su propio catálogo, sus ventas y sus comisiones. Nunca ve el costo ni la ganancia, solo el precio de venta y su % de comisión.
+
+## El ciclo de un producto
+- Disponible: cualquiera puede apartarlo o venderlo directo.
+- En Reserva: alguien lo apartó; solo esa persona (o la admin) puede venderlo o liberarlo. Si nadie lo vende a tiempo, se libera sola (configurable en Configuración).
+- Vendido: ya se vendió — la primera persona en venderlo gana la comisión de ESE producto.
+- Devuelto: si se aprueba una devolución, vuelve a este estado y la comisión se reversa; desde Inventario se puede "reingresar" para que vuelva a estar Disponible.
+
+## Comisiones
+Cada producto tiene su propio % de comisión. Cuando lo vende una vendedora, gana ese %; cuando lo vende la administradora, se queda con el 100% (es su propio negocio). En "Comisiones" la admin ve cuánto le debe a cada quien y registra los pagos — puede pagar solo una parte y el resto queda pendiente.
+
+## Cajas
+Una "caja" es un lote de mercancía que la admin compró. Cada producto puede pertenecer a una caja, y ahí se ve cuánto costó el lote contra cuánto ha generado en ventas.
+
+## Categorías y etiquetas
+Las categorías son el catálogo principal (Bolsas, Relojes...) que administra la admin. Las etiquetas son libres — cualquier palabra suelta (Oferta, Nuevo ingreso) que se escribe directo al crear o editar un producto, sin necesidad de crearlas antes.
+
+## Archivar y eliminar
+Los productos vendidos se archivan solos después de unos días (se les borran las fotos para ahorrar espacio, pero el producto y su venta quedan en el historial para siempre). Pasado otro tanto de días archivados, se eliminan definitivamente — el historial de ventas nunca se pierde, aunque el producto se borre.
+
+## Buscador y Pendientes
+Ctrl/Cmd+K (o la lupa) busca cualquier producto por nombre o código desde cualquier página. "Pendientes" (solo admin) junta en un solo lugar las devoluciones por aprobar, las reservas por vencer y los productos archivados que están por eliminarse.
+
+## Código QR y videos
+Cada producto tiene un código QR que abre su ficha pública (sin iniciar sesión) — útil para mostrarlo a un cliente. Se le puede poner un link de YouTube o TikTok (aunque sea un link corto) y se muestra embebido en la ficha.
+
+## Usuarios
+Los usuarios NO se crean desde el panel — se dan de alta en Supabase (Authentication > Users), donde solo la administradora tiene acceso. Desde el panel solo se edita su nombre, rol, género, % de comisión, o se desactivan (nunca se borran, para no perder su historial).`;
+
+function renderAyudaHTML(texto){
+  const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return (texto||'').split('\n').map(linea=>{
+    linea = linea.trim();
+    if(!linea) return '<div style="height:10px;"></div>';
+    if(linea.startsWith('## ')) return `<h3 style="margin:18px 0 8px;font-size:14.5px;">${esc(linea.slice(3))}</h3>`;
+    if(linea.startsWith('- ')) return `<div style="padding-left:14px;margin:3px 0;font-size:13px;">• ${esc(linea.slice(2))}</div>`;
+    return `<p class="text-muted" style="margin:4px 0;font-size:13px;">${esc(linea)}</p>`;
+  }).join('');
+}
+function modalAyuda(){
+  const texto = (DB.state.configuracion.ayuda_contenido) || AYUDA_DEFAULT;
+  const puedeEditar = DB.isAdmin();
+  openModal(`
+    <div class="modal-head"><div class="modal-title">${icon('help')} Ayuda — Guía del sistema</div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        ${puedeEditar?`<button class="btn btn-secondary btn-sm" id="btnEditarAyuda">${icon('edit')} Editar</button>`:''}
+        <button class="icon-btn" onclick="closeModal()">${icon('x')}</button>
+      </div></div>
+    <div class="modal-body" id="ayudaBody">${renderAyudaHTML(texto)}</div>`, 'lg');
+  document.getElementById('btnEditarAyuda')?.addEventListener('click', ()=>{
+    document.getElementById('ayudaBody').innerHTML = `
+      <textarea id="ayudaTextarea" rows="18" style="font-family:var(--font-mono);font-size:12.5px;">${texto}</textarea>
+      <div class="text-faint mt-8" style="font-size:11px;">Usa "## Título" para subtítulos y "- " para viñetas.</div>
+      <div class="modal-foot" style="padding:16px 0 0;border:none;">
+        <button class="btn btn-secondary" id="btnCancelarAyuda">Cancelar</button>
+        <button class="btn btn-primary" id="btnGuardarAyuda">${icon('check')} Guardar</button>
+      </div>`;
+    document.getElementById('btnCancelarAyuda').addEventListener('click', ()=>modalAyuda());
+    document.getElementById('btnGuardarAyuda').addEventListener('click', async ()=>{
+      const nuevo = document.getElementById('ayudaTextarea').value;
+      const res = await DB.guardarConfiguracion({ ayuda_contenido: nuevo });
+      if(res.ok){ toast('Ayuda actualizada','success'); modalAyuda(); }
+      else toast('No se pudo guardar: '+res.error,'danger');
+    });
   });
 }
 
@@ -2106,6 +2254,7 @@ function bindPageEvents(page){
   if(page==='a-categorias') document.getElementById('btnNuevaCategoria').addEventListener('click', ()=>modalCategoria(null));
   if(page==='a-gastos') document.getElementById('btnNuevoGasto').addEventListener('click', ()=>modalGasto(null));
   if(page==='a-config'){
+    document.getElementById('btnBackupCompleto').addEventListener('click', exportBackupCompleto);
     document.getElementById('formConfig').addEventListener('submit', async e=>{
       e.preventDefault();
       const res = await DB.guardarConfiguracion({
@@ -2120,19 +2269,66 @@ function bindPageEvents(page){
     });
   }
   if(page==='a-reportes'){
-    document.getElementById('btnExportCSV').addEventListener('click', exportCSV);
+    document.getElementById('btnExportExcel').addEventListener('click', exportReporteExcel);
   }
 }
 
-function exportCSV(){
-  const rows = [['Producto','Código','Categoría','Vendedor','Fecha','Costo','Precio','Gastos','Ganancia','Comisión','Estado']];
-  DB.state.venta_historial.forEach(v=>{
+// Todas las exportaciones del panel salen en Excel (.xlsx), no CSV.
+function exportReporteExcel(){
+  const rows = DB.state.venta_historial.map(v=>{
     const u = DB.state.usuarios.find(x=>x.id===v.vendedor_id);
-    rows.push([v.producto_nombre, v.producto_codigo, v.categoria||'', u?u.nombre:'', fmtDateShort(v.fecha_venta), v.costo, v.precio_venta, v.gastos_aplicados, v.ganancia_neta, v.comision_monto, v.estado_venta]);
+    return {
+      'Producto': v.producto_nombre, 'Código': v.producto_codigo, 'Categoría': v.categoria||'',
+      'Vendedor': u?u.nombre:'', 'Fecha': fmtDateShort(v.fecha_venta),
+      'Costo': v.costo, 'Precio': v.precio_venta, 'Gastos': v.gastos_aplicados,
+      'Ganancia': v.ganancia_neta, 'Comisión': v.comision_monto, 'Estado': v.estado_venta
+    };
   });
-  const csv = rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
-  const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'reporte_ventas.csv'; a.click();
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Ventas');
+  XLSX.writeFile(wb, 'reporte_ventas.xlsx');
+}
+
+// Backup completo del sistema en un solo Excel, una hoja por tabla — para
+// tener una copia fuera de Supabase por si acaso (no reemplaza los backups
+// automáticos de Supabase, es un respaldo adicional a mano cuando quieras).
+function exportBackupCompleto(){
+  const wb = XLSX.utils.book_new();
+  const addSheet = (nombre, rows) => {
+    const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ '(sin datos)':'' }]);
+    XLSX.utils.book_append_sheet(wb, ws, nombre.slice(0,31));
+  };
+  addSheet('Productos', DB.state.productos.map(p=>({
+    'Código':p.codigo, 'Nombre':p.nombre, 'Categoría':p.categoria||'', 'Etiquetas':(p.etiquetas||[]).join(', '),
+    'Costo':p.costo, 'Precio':p.precio_venta, '% Comisión':p.porcentaje_ganancia, 'Estado':p.estado,
+    'Archivado':p.archivado?'Sí':'No', 'Creado':fmtDateShort(p.created_at)
+  })));
+  addSheet('Ventas', DB.state.venta_historial.map(v=>{
+    const u = DB.state.usuarios.find(x=>x.id===v.vendedor_id);
+    return { 'Producto':v.producto_nombre, 'Código':v.producto_codigo, 'Categoría':v.categoria||'', 'Vendedor':u?u.nombre:'',
+      'Fecha':fmtDateShort(v.fecha_venta), 'Costo':v.costo, 'Precio':v.precio_venta, 'Gastos':v.gastos_aplicados,
+      'Ganancia':v.ganancia_neta, 'Comisión':v.comision_monto, 'Estado comisión':v.comision_estado, 'Estado':v.estado_venta };
+  }));
+  addSheet('Comisiones Pagadas', DB.state.pagos_comision.map(p=>{
+    const u = DB.state.usuarios.find(x=>x.id===p.vendedor_id);
+    return { 'Vendedora':u?u.nombre:'', 'Monto':p.monto_total, 'Fecha':fmtDateShort(p.fecha_pago), 'Notas':p.notas||'' };
+  }));
+  addSheet('Cajas', DB.state.cajas.map(c=>({ 'Nombre':c.nombre, 'Costo Pagado':c.costo_total_pagado, 'Estado':c.estado, 'Apertura':fmtDateShort(c.fecha_apertura), 'Cierre':c.fecha_cierre?fmtDateShort(c.fecha_cierre):'' })));
+  addSheet('Categorías', DB.state.categorias.map(c=>({ 'Nombre':c.nombre, 'Productos':DB.contarProductosPorCategoria(c.nombre) })));
+  addSheet('Gastos', DB.state.gastos.map(g=>({ 'Nombre':g.nombre, 'Monto':g.monto_default, 'Tipo':g.tipo, 'Activo':g.activo?'Sí':'No' })));
+  addSheet('Devoluciones', DB.state.devoluciones.map(d=>{
+    const v = DB.state.venta_historial.find(x=>x.id===d.venta_historial_id);
+    return { 'Producto':v?v.producto_nombre:'', 'Razón':d.razon, 'Estado':d.estado, 'Fecha':fmtDateShort(d.fecha_solicitud) };
+  }));
+  addSheet('Usuarios', DB.state.usuarios.map(u=>({ 'Nombre':u.nombre, 'Email':u.email||'', 'Rol':DB.rolLabel(u), '% Comisión':u.porcentaje_comision_default||'', 'Activo':u.activo?'Sí':'No' })));
+  addSheet('Bitácora', DB.state.bitacora.map(b=>{
+    const u = DB.state.usuarios.find(x=>x.id===b.usuario_id);
+    return { 'Fecha':fmtDate(b.created_at), 'Usuario':u?u.nombre:'Sistema', 'Acción':b.tipo_cambio, 'Tabla':b.tabla_afectada, 'Descripción':b.descripcion||'' };
+  }));
+  addSheet('Configuración', Object.entries(DB.state.configuracion).map(([k,v])=>({ 'Clave':k, 'Valor':String(v) })));
+  const fecha = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, 'backup_la_cabana_'+fecha+'.xlsx');
 }
 
 /* ---------------------------------------------------------------------
@@ -2250,7 +2446,7 @@ async function renderPublicPage(codigo){
   const fotos = p.fotos || [];
   const info = estadoInfo(p.estado);
   root.innerHTML = `<div class="public-card">
-    ${fotos.length?`<div class="public-gallery">${fotos.map(url=>`<img src="${url}">`).join('')}</div>`:''}
+    ${fotos.length?`<div class="public-gallery">${fotos.map((url,i)=>`<img src="${url}" class="ficha-foto" data-i="${i}">`).join('')}</div>`:''}
     <div class="public-body">
       <div class="flex-between"><h2>${p.nombre}</h2><span class="badge ${info.cls}">${info.label}</span></div>
       <div class="text-faint mt-8">${p.categoria||''}</div>
@@ -2259,6 +2455,7 @@ async function renderPublicPage(codigo){
       <p class="text-muted">${p.descripcion||'Sin descripción disponible.'}</p>
     </div>
   </div>`;
+  document.querySelectorAll('.ficha-foto').forEach(img=>img.addEventListener('click', ()=>openLightbox(fotos, Number(img.dataset.i))));
 }
 
 /* =====================================================================
@@ -2311,6 +2508,7 @@ function setSidebarOpen(open){
 }
 document.getElementById('menuToggle').addEventListener('click', ()=>setSidebarOpen(!document.getElementById('sidebar').classList.contains('open')));
 document.getElementById('searchBtn').addEventListener('click', modalBuscar);
+document.getElementById('ayudaBtn').addEventListener('click', modalAyuda);
 document.getElementById('sidebarScrim').addEventListener('click', ()=>setSidebarOpen(false));
 document.getElementById('notifBtn').addEventListener('click', e=>{
   e.stopPropagation();
