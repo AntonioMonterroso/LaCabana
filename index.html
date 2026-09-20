@@ -4,6 +4,18 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>La Cabaña · Panel de Inventario</title>
+<!-- PWA: solo hace instalable el sitio (ícono en pantalla de inicio, se abre
+     sin barra del navegador). No cambia nada del diseño/HTML/CSS de la app.
+     Sin service worker a propósito: así SIEMPRE carga la versión más
+     reciente publicada, igual que abrir la página normal — cualquier
+     cambio futuro que subas se refleja de inmediato, sin caché que limpiar. -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#3B2A1F">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="La Cabaña">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@500;600;700&family=Fira+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
