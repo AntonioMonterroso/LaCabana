@@ -563,6 +563,7 @@ const DB = {
       porcentaje_ganancia: Number(data.porcentaje_ganancia) || this.state.configuracion.comision_default_porcentaje,
       url_video: data.url_video || null, caja_id: data.caja_id || null,
       etiquetas: parseEtiquetas(data.etiquetas),
+      gastos_predefinidos: data.gastos_predefinidos || [],
       created_by_admin: this.currentUser().id
     };
     const { data:prod, error } = await sb.from('productos').insert(insertData).select().single();
@@ -579,6 +580,7 @@ const DB = {
       nombre: p.nombre + ' (copia)', descripcion: p.descripcion, categoria: p.categoria,
       costo: p.costo, precio_venta: p.precio_venta, porcentaje_ganancia: p.porcentaje_ganancia,
       url_video: p.url_video, caja_id: p.caja_id, etiquetas: p.etiquetas || [],
+      gastos_predefinidos: p.gastos_predefinidos || [],
       created_by_admin: this.currentUser().id
     };
     const { data:row, error } = await sb.from('productos').insert(insertData).select().single();
@@ -1702,6 +1704,11 @@ PAGES['a-nuevo'] = () => `
         <div class="form-group"><label>Precio de venta (${DB.state.configuracion.moneda_simbolo}) *</label><input type="number" step="0.01" id="npPrecio" required placeholder="0.00"></div>
       </div>
       <div class="form-group"><label>% Comisión para quien lo venda</label><input type="number" step="0.01" id="npPorcentaje" value="${DB.state.configuracion.comision_default_porcentaje}"></div>
+      <div class="form-group"><label>Gastos que aplican siempre a este producto (opcional)</label>
+        <div class="text-faint mb-8" style="font-size:11.5px;">Se suman solos al precio cada vez que este producto se venda — sin tener que elegirlos en el momento de la venta.</div>
+        ${DB.state.gastos.filter(g=>g.activo).map(g=>`<div class="gasto-row"><input type="checkbox" class="np-gasto-check" value="${g.id}">
+          <span class="g-name">${g.nombre} ${g.tipo==='porcentaje'?`(${g.monto_default}%)`:`(${money(g.monto_default)})`}</span></div>`).join('') || `<div class="text-faint" style="font-size:11.5px;">No hay gastos configurados — créalos en Gastos.</div>`}
+      </div>
       <div class="form-group"><label>Link de video (YouTube / TikTok)</label><input id="npVideo" placeholder="https://youtube.com/watch?v=..."></div>
       <div class="form-group"><label>Etiquetas (opcional)</label><input id="npEtiquetas" placeholder="Ej: Oferta, Nuevo ingreso"><div class="text-faint mt-8" style="font-size:11.5px;">Sepáralas por coma — libres, no necesitan crearse antes.</div></div>
       <div class="form-group">
@@ -1784,9 +1791,26 @@ PAGES['a-comisiones'] = () => {
     </div>`;
 };
 
+// El admin también puede vender (100% de ganancia) — necesita el mismo botón
+// de "solicitar devolución" que ya tiene la vendedora en v-ventas, sobre sus
+// propias ventas, ya que fn_solicitar_devolucion no distingue el rol.
 PAGES['a-devoluciones'] = () => {
   const devs = DB.state.devoluciones;
-  return `<div class="table-wrap"><table><thead><tr><th>Producto</th><th>Solicitó</th><th>Razón</th><th>Fecha</th><th>Estado</th><th></th></tr></thead><tbody>
+  const cur = DB.currentUser();
+  const misVentas = DB.state.venta_historial.filter(v=>v.vendedor_id===cur.id && v.estado_venta==='vendido');
+  return `<div class="panel">
+    <div class="panel-title" style="margin-bottom:12px;">Solicitar devolución de una venta mía</div>
+    <div class="table-wrap"><table><thead><tr><th>Producto</th><th>Fecha</th><th>Estado</th><th></th></tr></thead><tbody>
+    ${misVentas.length ? misVentas.map(v=>{
+      const pend = devs.find(d=>d.venta_historial_id===v.id && d.estado==='pendiente');
+      return `<tr><td>${v.producto_nombre}</td><td>${fmtDateShort(v.fecha_venta)}</td><td>${pend?'<span class="badge badge-warning">Solicitud pendiente</span>':'—'}</td>
+        <td>${pend?'':`<button class="btn btn-secondary btn-sm" data-action="solicitar-devolucion" data-id="${v.id}">Solicitar devolución</button>`}</td></tr>`;
+    }).join('') : `<tr class="empty-row"><td colspan="4">No tienes ventas confirmadas</td></tr>`}
+    </tbody></table></div>
+  </div>
+  <div class="panel">
+    <div class="panel-title" style="margin-bottom:12px;">Todas las solicitudes</div>
+    <div class="table-wrap"><table><thead><tr><th>Producto</th><th>Solicitó</th><th>Razón</th><th>Fecha</th><th>Estado</th><th></th></tr></thead><tbody>
   ${devs.length ? devs.map(d=>{
     const v = DB.state.venta_historial.find(x=>x.id===d.venta_historial_id);
     const u = DB.state.usuarios.find(x=>x.id===d.solicitado_por);
@@ -1796,7 +1820,8 @@ PAGES['a-devoluciones'] = () => {
       <td>${d.estado==='pendiente'?`<button class="btn btn-primary btn-sm" data-action="aprobar-dev" data-id="${d.id}">Aprobar</button>
         <button class="btn btn-secondary btn-sm" data-action="rechazar-dev" data-id="${d.id}">Rechazar</button>`:''}</td></tr>`;
   }).join('') : `<tr class="empty-row"><td colspan="6">Sin solicitudes de devolución</td></tr>`}
-  </tbody></table></div>`;
+    </tbody></table></div>
+  </div>`;
 };
 
 // Clientes es opcional/sugerido: una venta puede quedar "pendiente de pago"
@@ -2087,6 +2112,10 @@ function modalEditarProducto(p){
           </select></div>
         <div class="form-group"><label>% Comisión</label><input type="number" id="epPorcentaje" value="${p.porcentaje_ganancia}"></div>
       </div>
+      <div class="form-group"><label>Gastos que aplican siempre a este producto (opcional)</label>
+        ${DB.state.gastos.filter(g=>g.activo).map(g=>`<div class="gasto-row"><input type="checkbox" class="ep-gasto-check" value="${g.id}" ${(p.gastos_predefinidos||[]).includes(g.id)?'checked':''}>
+          <span class="g-name">${g.nombre} ${g.tipo==='porcentaje'?`(${g.monto_default}%)`:`(${money(g.monto_default)})`}</span></div>`).join('') || `<div class="text-faint" style="font-size:11.5px;">No hay gastos configurados — créalos en Gastos.</div>`}
+      </div>
       <div class="form-row">
         <div class="form-group"><label>Costo</label><input type="number" step="0.01" id="epCosto" value="${p.costo}"></div>
         <div class="form-group"><label>Precio de venta</label><input type="number" step="0.01" id="epPrecio" value="${p.precio_venta}"></div>
@@ -2132,6 +2161,7 @@ function modalEditarProducto(p){
   document.getElementById('btnGuardarEdit').addEventListener('click', async ()=>{
     const btn = document.getElementById('btnGuardarEdit'); btn.disabled = true;
     const urlVideo = await resolverVideoUrl(document.getElementById('epVideo').value);
+    const gastosPredefinidos = [...document.querySelectorAll('.ep-gasto-check:checked')].map(chk=>chk.value);
     const res = await DB.editarProducto(p.id, {
       nombre: document.getElementById('epNombre').value,
       categoria: document.getElementById('epCategoria').value || null,
@@ -2140,7 +2170,8 @@ function modalEditarProducto(p){
       precio_venta: Number(document.getElementById('epPrecio').value),
       url_video: urlVideo,
       etiquetas: document.getElementById('epEtiquetas').value,
-      descripcion: document.getElementById('epDescripcion').value
+      descripcion: document.getElementById('epDescripcion').value,
+      gastos_predefinidos: gastosPredefinidos
     });
     if(res.ok && fotosBuffer.length) await DB.subirFotos(p.id, 'inventario', fotosBuffer);
     if(res.ok){ toast('Producto actualizado','success'); closeModal(); await refresh(); }
@@ -2153,14 +2184,20 @@ function modalVender(p){
   const verCosto = esAdmin; // las vendedoras solo ven precio de venta y su comisión, nunca el costo/margen
   const pctComision = esAdmin ? 100 : p.porcentaje_ganancia; // el admin se queda con el 100%: es su propio negocio
   // Los gastos se SUMAN al precio (se cobran aparte al cliente) — nunca
-  // reducen la ganancia/comisión. Los marcados "oculto_vendedoras" (ej. IVA)
-  // no aparecen como casilla y se aplican siempre, a todas: la vendedora
-  // solo ve el total ya sumado, nunca el nombre/monto de ese gasto puntual.
+  // reducen la ganancia/comisión. Dos formas de que un gasto se aplique
+  // solo, sin casilla que elegir en el momento de la venta:
+  //  1) "oculto_vendedoras" (ej. IVA): aplica a TODAS las ventas de TODOS
+  //     los productos, y la vendedora nunca ve su nombre/monto individual.
+  //  2) Asignado al producto (elegido en el formulario de Nuevo Producto):
+  //     aplica solo a ESTE producto, pero sí es visible para la vendedora
+  //     (no es un dato que haya que ocultarle, solo ya no lo elige ella).
   const gastosActivos = DB.state.gastos.filter(g=>g.activo);
-  const gastosCheckbox = gastosActivos.filter(g=>!g.oculto_vendedoras);
-  const gastosAutomaticos = gastosActivos.filter(g=>g.oculto_vendedoras);
+  const idsDelProducto = p.gastos_predefinidos || [];
+  const gastosOcultos = gastosActivos.filter(g=>g.oculto_vendedoras);
+  const gastosDelProducto = gastosActivos.filter(g=>!g.oculto_vendedoras && idsDelProducto.includes(g.id));
+  const gastosCheckbox = gastosActivos.filter(g=>!g.oculto_vendedoras && !idsDelProducto.includes(g.id));
   const montoAutomatico = g => g.tipo==='porcentaje' ? (p.precio_venta*g.monto_default/100) : Number(g.monto_default);
-  const totalAutomaticos = gastosAutomaticos.reduce((s,g)=>s+montoAutomatico(g),0);
+  const totalAutomaticos = gastosOcultos.reduce((s,g)=>s+montoAutomatico(g),0) + gastosDelProducto.reduce((s,g)=>s+montoAutomatico(g),0);
   const gananciaFija = p.precio_venta - p.costo; // los gastos ya NO la afectan
   const calcTotal = () => {
     let total = totalAutomaticos;
@@ -2180,7 +2217,8 @@ function modalVender(p){
           <input type="number" class="gasto-monto" data-id="${g.id}" value="${monto}" step="0.01"></div>`;
       }).join('') : `<div class="text-faint">No hay gastos configurados</div>`}
       </div>
-      ${esAdmin && gastosAutomaticos.length ? `<div class="text-faint mt-8" style="font-size:11px;">Automáticos (siempre se aplican; las vendedoras no los ven por separado): ${gastosAutomaticos.map(g=>g.nombre+' ('+money(montoAutomatico(g))+')').join(', ')}</div>` : ''}
+      ${gastosDelProducto.length ? `<div class="text-faint mt-8" style="font-size:11px;">Gastos de este producto (aplican siempre, sin elegirlos): ${gastosDelProducto.map(g=>g.nombre+' ('+money(montoAutomatico(g))+')').join(', ')}</div>` : ''}
+      ${esAdmin && gastosOcultos.length ? `<div class="text-faint mt-8" style="font-size:11px;">Automáticos a todas las ventas (las vendedoras no los ven por separado): ${gastosOcultos.map(g=>g.nombre+' ('+money(montoAutomatico(g))+')').join(', ')}</div>` : ''}
       <div class="calc-box">
         <div class="calc-row"><span>Precio de venta</span><span>${money(p.precio_venta)}</span></div>
         ${verCosto ? `<div class="calc-row"><span>Costo</span><span>-${money(p.costo)}</span></div>` : ''}
@@ -2220,7 +2258,7 @@ function modalVender(p){
     estadoPago = btn.dataset.valor;
   }));
   document.getElementById('btnConfirmarVenta').addEventListener('click', async ()=>{
-    const gastos = gastosAutomaticos.map(g=>({ gasto_id:g.id, nombre:g.nombre, monto:montoAutomatico(g) }));
+    const gastos = [...gastosOcultos, ...gastosDelProducto].map(g=>({ gasto_id:g.id, nombre:g.nombre, monto:montoAutomatico(g) }));
     document.querySelectorAll('.gasto-check').forEach(chk=>{ if(chk.checked) gastos.push({ gasto_id:chk.dataset.id, nombre:chk.dataset.nombre, monto:Number(document.querySelector(`.gasto-monto[data-id="${chk.dataset.id}"]`).value)||0 }); });
     const btnV = document.getElementById('btnConfirmarVenta'); btnV.disabled = true;
 
@@ -2670,11 +2708,12 @@ function bindPageEvents(page){
       const btnHtml = btn.innerHTML;
       btn.disabled = true; btn.textContent = 'Creando...';
       const urlVideo = await resolverVideoUrl(document.getElementById('npVideo').value);
+      const gastosPredefinidos = [...document.querySelectorAll('.np-gasto-check:checked')].map(chk=>chk.value);
       const res = await DB.crearProducto({
         nombre, categoria: document.getElementById('npCategoria').value, caja_id: document.getElementById('npCaja').value||null,
         descripcion: document.getElementById('npDescripcion').value, costo, precio_venta: precio,
         porcentaje_ganancia: document.getElementById('npPorcentaje').value, url_video: urlVideo,
-        etiquetas: document.getElementById('npEtiquetas').value
+        etiquetas: document.getElementById('npEtiquetas').value, gastos_predefinidos: gastosPredefinidos
       }, fotosBuffer);
       if(res.ok){ toast('Producto creado','success'); await DB.fetchAll(); navigate('a-inventario'); }
       else { toast('No se pudo crear: '+res.error,'danger'); btn.disabled = false; btn.innerHTML = btnHtml; }
