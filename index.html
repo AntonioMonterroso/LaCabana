@@ -169,6 +169,9 @@ button.menu-toggle{display:none;}
 /* ---------- cards / kpis ---------- */
 .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:24px;}
 .kpi-card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:18px;}
+.kpi-card.clickable{cursor:pointer;transition:transform 120ms var(--ease-out),box-shadow 120ms var(--ease-out),border-color 120ms var(--ease-out);}
+.kpi-card.clickable:hover{border-color:var(--color-accent);box-shadow:var(--shadow);}
+.kpi-card.clickable:active{transform:scale(0.97);}
 .kpi-top{display:flex;align-items:center;gap:12px;margin-bottom:14px;}
 .kpi-icon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .kpi-icon.icon-success{background:var(--forest-100);color:var(--forest-700);}
@@ -207,18 +210,18 @@ tbody tr:hover{background:var(--color-surface-alt);}
 
 /* ---------- kanban ---------- */
 /* Cada fase es una sección de ancho completo (no 3 columnas apretadas), con las
-   tarjetas en una cuadrícula que acumula en horizontal Y vertical. Con muchos
-   productos, se colapsa a un par de filas y un botón "Ver todos" expande. */
-.kanban{display:flex;flex-direction:column;gap:18px;}
-.kanban-col{background:var(--color-surface-alt);border-radius:var(--radius);padding:16px;}
-.kanban-col-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding:0 2px;}
+   tarjetas en una cuadrícula. Es un acordeón: solo una fase (Disponible, En
+   Reserva, etc.) muestra sus tarjetas a la vez — clic en el encabezado
+   despliega esa y encoge las demás. Pensado para verse bien en el teléfono. */
+.kanban{display:flex;flex-direction:column;gap:12px;}
+.kanban-col{background:var(--color-surface-alt);border-radius:var(--radius);overflow:hidden;}
+.kanban-col-head{all:unset;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;width:100%;padding:14px 16px;cursor:pointer;}
 .kanban-col-head .dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:8px;}
 .kanban-col-title{font-weight:700;font-size:14px;display:flex;align-items:center;}
 .kanban-count{background:var(--color-surface);border:1px solid var(--color-border);border-radius:999px;padding:1px 9px;font-size:11px;font-weight:700;color:var(--color-text-muted);margin-left:8px;}
-.kanban-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;position:relative;}
-.kanban-cards.collapsed{max-height:392px;overflow:hidden;}
-.kanban-cards.collapsed::after{content:'';position:absolute;left:0;right:0;bottom:0;height:64px;
-  background:linear-gradient(to bottom, transparent, var(--color-surface-alt));pointer-events:none;}
+.kanban-chevron svg{width:18px;height:18px;stroke:var(--color-text-muted);transition:transform 160ms var(--ease-out);}
+.kanban-col.open .kanban-chevron svg{transform:rotate(180deg);}
+.kanban-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;padding:0 16px 16px;}
 .card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;}
 
 .product-card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;overflow:hidden;
@@ -811,6 +814,14 @@ const DB = {
     if(error) return { ok:false, error: error.message };
     return { ok:true, data };
   },
+  // Solo admin: registra la devolución YA aprobada en el mismo paso (sin
+  // quedar "pendiente" de que ella misma se apruebe) — el producto pasa
+  // directo a "Devuelto — requiere revisión" en Inventario.
+  async registrarDevolucionAdmin(ventaHistorialId, razon){
+    const { data, error } = await sb.rpc('fn_registrar_devolucion_admin', { p_venta_historial_id:ventaHistorialId, p_razon:razon });
+    if(error) return { ok:false, error: error.message };
+    return { ok:true, data };
+  },
 
   // ---------------- CLIENTES Y DEUDAS ----------------
   // Sugerido, no obligatorio: una venta puede no tener cliente asociado y
@@ -1146,6 +1157,7 @@ function icon(name){
     moon:'<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>',
     sun:'<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>',
     phone:'<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>',
+    chevron:'<polyline points="6 9 12 15 18 9"/>',
   }[name] || '';
   return `<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${I}</svg>`;
 }
@@ -1220,6 +1232,7 @@ const NAV = {
     { page:'v-catalogo', label:'Catálogo', icon:'box' },
     { page:'v-ventas', label:'Mis Ventas', icon:'crate' },
     { page:'v-comisiones', label:'Mis Comisiones', icon:'percent' },
+    { page:'v-clientes', label:'Mis Clientes', icon:'users2' },
   ],
   administrador: [
     { section:'PANEL' },
@@ -1247,6 +1260,7 @@ const PAGE_TITLES = {
   'v-catalogo':['Catálogo','Aparta o vende productos disponibles'],
   'v-ventas':['Mis Ventas','Historial de productos que has vendido'],
   'v-comisiones':['Mis Comisiones','Lo que has ganado por tus ventas'],
+  'v-clientes':['Mis Clientes','Los clientes que tú has registrado'],
   'a-dashboard':['Dashboard','Resumen general del negocio'],
   'a-pendientes':['Pendientes','Todo lo que necesita tu revisión, en un solo lugar'],
   'a-inventario':['Inventario','Estado de todos los productos'],
@@ -1255,7 +1269,7 @@ const PAGE_TITLES = {
   'a-categorias':['Categorías','Organiza el inventario para que escale sin desorden'],
   'a-gastos':['Gastos','Catálogo de gastos aplicables a una venta'],
   'a-comisiones':['Comisiones','Cuánto le debes a cada vendedora y qué ya le pagaste'],
-  'a-devoluciones':['Devoluciones','Solicitudes de devolución'],
+  'a-devoluciones':['Devoluciones','Registra las tuyas al momento; aprueba o rechaza las de las vendedoras'],
   'a-clientes':['Clientes','Quién debe, cuánto y su historial de compras'],
   'a-usuarios':['Usuarios','Administradoras y vendedoras del sistema'],
   'a-reportes':['Reportes','Estadísticas de ventas y ganancias'],
@@ -1295,12 +1309,17 @@ function renderPage(page){
 /* ---------------------------------------------------------------------
    Helpers de render compartidos
 --------------------------------------------------------------------- */
-function kpi(label, value, iconName, colorClass, sub){
-  return `<div class="kpi-card">
+// onClick (opcional): expresión JS literal, ej. "navigate('a-comisiones')" —
+// hace la tarjeta clicable y te lleva directo a donde está ese dato.
+function kpi(label, value, iconName, colorClass, sub, onClick){
+  const attrs = onClick ? ` class="kpi-card clickable" role="button" tabindex="0" onclick="${onClick}" onkeydown="if(event.key==='Enter'){${onClick}}"` : ' class="kpi-card"';
+  return `<div${attrs}>
     <div class="kpi-top"><div class="kpi-icon ${colorClass}">${icon(iconName)}</div><div class="kpi-label">${label}</div></div>
     <div class="kpi-value">${value}</div>${sub?`<div class="kpi-sub">${sub}</div>`:''}
   </div>`;
 }
+// Atajo para las tarjetas que abren Inventario ya con una fase específica desplegada.
+function irAInventario(seccion){ inventarioSeccionAbierta = seccion; navigate('a-inventario'); }
 
 /* =====================================================================
    GRÁFICAS DE REPORTES — SVG/CSS a mano (sin librerías externas), heredan
@@ -1415,18 +1434,20 @@ function productCard(p, opts){
 }
 // Cada fase colapsa a ~2 filas cuando hay muchos productos (100, 500, 1000...);
 // "Ver todos" la expande. El estado de expandido se recuerda mientras navegas.
-const expandedSections = new Set();
-const COLLAPSE_THRESHOLD = 8;
+// Cuál fase del inventario está desplegada ahora mismo (acordeón: una sola a la vez).
+let inventarioSeccionAbierta = 'en_inventario';
+// Acordeón: solo una sección abierta a la vez (mejor para ver en teléfono
+// que tener todas las fases mostrando tarjetas al mismo tiempo).
 function kanbanColumn(estado, title, dotColor, productos, mode){
-  const isOpen = expandedSections.has(estado) || productos.length<=COLLAPSE_THRESHOLD;
-  return `<div class="kanban-col">
-    <div class="kanban-col-head">
+  const isOpen = inventarioSeccionAbierta === estado;
+  return `<div class="kanban-col ${isOpen?'open':''}">
+    <button type="button" class="kanban-col-head" data-action="toggle-seccion" data-key="${estado}">
       <div class="kanban-col-title"><span class="dot" style="background:${dotColor}"></span>${title}<span class="kanban-count">${productos.length}</span></div>
-      ${productos.length>COLLAPSE_THRESHOLD ? `<button class="btn btn-ghost btn-sm" data-action="toggle-seccion" data-key="${estado}">${isOpen?'Ver menos':'Ver todos'}</button>` : ''}
-    </div>
-    <div class="kanban-cards ${isOpen?'':'collapsed'}">
+      <span class="kanban-chevron">${icon('chevron')}</span>
+    </button>
+    ${isOpen ? `<div class="kanban-cards">
       ${productos.length ? productos.map(p=>productCard(p,{mode})).join('') : `<div class="text-faint text-center" style="padding:20px 0;font-size:12.5px;grid-column:1/-1;">Sin productos</div>`}
-    </div>
+    </div>` : ''}
   </div>`;
 }
 
@@ -1448,10 +1469,10 @@ PAGES['v-dashboard'] = () => {
   const etiquetasDias = diasArr.map(d=>d.toLocaleDateString('es-GT',{day:'2-digit',month:'2-digit'}));
   return `
     <div class="kpi-grid">
-      ${kpi('Productos Apartados', misApartados.length, 'bookmark','icon-info')}
-      ${kpi('Ventas Este Mes', ventasMes.length, 'crate','icon-success')}
-      ${kpi('Comisión Acumulada', money(comisionGanada), 'percent','icon-warn')}
-      ${kpi('Comisión Por Pagar', money(comisionPendiente), 'card','icon-neutral')}
+      ${kpi('Productos Apartados', misApartados.length, 'bookmark','icon-info',null,"navigate('v-catalogo')")}
+      ${kpi('Ventas Este Mes', ventasMes.length, 'crate','icon-success',null,"navigate('v-ventas')")}
+      ${kpi('Comisión Acumulada', money(comisionGanada), 'percent','icon-warn',null,"navigate('v-comisiones')")}
+      ${kpi('Comisión Por Pagar', money(comisionPendiente), 'card','icon-neutral',null,"navigate('v-comisiones')")}
     </div>
     <div class="panel">
       <div class="panel-title" style="margin-bottom:8px;">Mi comisión — últimos 14 días</div>
@@ -1564,6 +1585,33 @@ PAGES['v-comisiones'] = () => {
   </div>`;
 };
 
+// RLS ya filtra DB.state.clientes a solo los que ELLA creó — no hace falta
+// filtrar nada acá (ver migracion_11_clientes_por_vendedora.sql).
+PAGES['v-clientes'] = () => {
+  const clientes = DB.state.clientes;
+  const totalDeuda = clientes.reduce((s,c)=>s+DB.resumenCliente(c.id).deuda,0);
+  return `
+    <div class="kpi-grid">
+      ${kpi('Mis clientes', clientes.length, 'users2','icon-info')}
+      ${kpi('Me deben (total)', money(totalDeuda), 'wallet','icon-warn')}
+    </div>
+    <div class="panel">
+      <div class="panel-head"><div class="panel-title">Mis Clientes</div><button class="btn btn-primary btn-sm" id="btnNuevoCliente">${icon('plus')} Nuevo Cliente</button></div>
+      <div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Compras</th><th>Total gastado</th><th>Deuda actual</th><th></th></tr></thead><tbody>
+      ${clientes.length ? clientes.map(c=>{
+        const r = DB.resumenCliente(c.id);
+        return `<tr><td>${c.nombre}</td><td>${c.telefono||'—'}</td><td>${r.compras.length}</td><td>${money(r.totalGastado)}</td>
+          <td>${r.deuda>0?`<strong style="color:var(--red-700);">${money(r.deuda)}</strong>`:money(0)}</td>
+          <td><div class="icon-actions-row" style="margin-top:0;">
+            ${botonesContacto(c.telefono)}
+            <button class="icon-btn info" data-action="ver-historial-cliente" data-id="${c.id}" data-tip="Ver historial">${icon('file')}</button>
+            <button class="icon-btn edit" data-action="editar-cliente" data-id="${c.id}" data-tip="Editar">${icon('edit')}</button>
+          </div></td></tr>`;
+      }).join('') : `<tr class="empty-row"><td colspan="6">Aún no has registrado clientes — se crean aquí o directo al vender un producto</td></tr>`}
+      </tbody></table></div>
+    </div>`;
+};
+
 /* ---------------------------------------------------------------------
    PÁGINAS — ADMIN
 --------------------------------------------------------------------- */
@@ -1580,11 +1628,11 @@ PAGES['a-dashboard'] = () => {
   const topVendedor = topVendedorId ? DB.state.usuarios.find(u=>u.id===topVendedorId) : null;
   return `
     <div class="kpi-grid">
-      ${kpi('En Inventario', productos.filter(p=>p.estado==='en_inventario').length,'crate','icon-neutral')}
-      ${kpi('En Reserva', productos.filter(p=>p.estado==='en_reserva').length,'bookmark','icon-warn')}
-      ${kpi('Vendidos Este Mes', ventasMes.length,'box','icon-info')}
-      ${kpi('Ganancia Neta (Mes)', money(gananciaMes),'trending','icon-success')}
-      ${kpi('Comisiones Pendientes', money(comisionesPendientes),'percent','icon-warn')}
+      ${kpi('En Inventario', productos.filter(p=>p.estado==='en_inventario').length,'crate','icon-neutral',null,"irAInventario('en_inventario')")}
+      ${kpi('En Reserva', productos.filter(p=>p.estado==='en_reserva').length,'bookmark','icon-warn',null,"irAInventario('en_reserva')")}
+      ${kpi('Vendidos Este Mes', ventasMes.length,'box','icon-info',null,"irAInventario('vendido')")}
+      ${kpi('Ganancia Neta (Mes)', money(gananciaMes),'trending','icon-success',null,"navigate('a-reportes')")}
+      ${kpi('Comisiones Pendientes', money(comisionesPendientes),'percent','icon-warn',null,"navigate('a-comisiones')")}
     </div>
     <div class="form-row">
       <div class="panel">
@@ -1803,25 +1851,27 @@ PAGES['a-comisiones'] = () => {
     </div>`;
 };
 
-// El admin también puede vender (100% de ganancia) — necesita el mismo botón
-// de "solicitar devolución" que ya tiene la vendedora en v-ventas, sobre sus
-// propias ventas, ya que fn_solicitar_devolucion no distingue el rol.
+// El admin también puede vender (100% de ganancia) — necesita poder
+// registrar la devolución de sus propias ventas. A diferencia de una
+// vendedora (que solicita y espera aprobación), para el admin es INSTANTÁNEO:
+// fn_registrar_devolucion_admin la crea ya aprobada y manda el producto
+// directo a "Devuelto — requiere revisión" en Inventario (ver modalDevolucion).
 PAGES['a-devoluciones'] = () => {
   const devs = DB.state.devoluciones;
   const cur = DB.currentUser();
   const misVentas = DB.state.venta_historial.filter(v=>v.vendedor_id===cur.id && v.estado_venta==='vendido');
   return `<div class="panel">
-    <div class="panel-title" style="margin-bottom:12px;">Solicitar devolución de una venta mía</div>
+    <div class="panel-title" style="margin-bottom:12px;">Registrar devolución de una venta mía</div>
     <div class="table-wrap"><table><thead><tr><th>Producto</th><th>Fecha</th><th>Estado</th><th></th></tr></thead><tbody>
     ${misVentas.length ? misVentas.map(v=>{
       const pend = devs.find(d=>d.venta_historial_id===v.id && d.estado==='pendiente');
-      return `<tr><td>${v.producto_nombre}</td><td>${fmtDateShort(v.fecha_venta)}</td><td>${pend?'<span class="badge badge-warning">Solicitud pendiente</span>':'—'}</td>
-        <td>${pend?'':`<button class="btn btn-secondary btn-sm" data-action="solicitar-devolucion" data-id="${v.id}">Solicitar devolución</button>`}</td></tr>`;
+      return `<tr><td>${v.producto_nombre}</td><td>${fmtDateShort(v.fecha_venta)}</td><td>${pend?'<span class="badge badge-warning">Pendiente de revisar</span>':'—'}</td>
+        <td>${pend?'':`<button class="btn btn-secondary btn-sm" data-action="registrar-devolucion-admin" data-id="${v.id}">Registrar devolución</button>`}</td></tr>`;
     }).join('') : `<tr class="empty-row"><td colspan="4">No tienes ventas confirmadas</td></tr>`}
     </tbody></table></div>
   </div>
   <div class="panel">
-    <div class="panel-title" style="margin-bottom:12px;">Todas las solicitudes</div>
+    <div class="panel-title" style="margin-bottom:12px;">Solicitudes de vendedoras</div>
     <div class="table-wrap"><table><thead><tr><th>Producto</th><th>Solicitó</th><th>Razón</th><th>Fecha</th><th>Estado</th><th></th></tr></thead><tbody>
   ${devs.length ? devs.map(d=>{
     const v = DB.state.venta_historial.find(x=>x.id===d.venta_historial_id);
@@ -1862,11 +1912,20 @@ PAGES['a-clientes'] = () => {
       </tbody></table></div>
     </div>
     <div class="panel">
-      <div class="panel-head"><div class="panel-title">Clientes</div><button class="btn btn-primary btn-sm" id="btnNuevoCliente">${icon('plus')} Nuevo Cliente</button></div>
-      <div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Compras</th><th>Total gastado</th><th>Deuda actual</th><th></th></tr></thead><tbody>
+      <div class="panel-head"><div class="panel-title">Clientes — de todas las vendedoras</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <select id="clientesFiltroVendedor"><option value="">Todas las vendedoras</option>
+            ${[...new Set(clientes.map(c=>c.created_by))].map(uid=>DB.state.usuarios.find(u=>u.id===uid)).filter(Boolean)
+              .map(u=>`<option value="${u.id}">${u.nombre}</option>`).join('')}
+          </select>
+          <button class="btn btn-primary btn-sm" id="btnNuevoCliente">${icon('plus')} Nuevo Cliente</button>
+        </div>
+      </div>
+      <div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Vendedora</th><th>Teléfono</th><th>Compras</th><th>Total gastado</th><th>Deuda actual</th><th></th></tr></thead><tbody id="clientesTbody">
       ${clientes.length ? clientes.map(c=>{
         const r = DB.resumenCliente(c.id);
-        return `<tr><td>${c.nombre}</td><td>${c.telefono||'—'}</td><td>${r.compras.length}</td><td>${money(r.totalGastado)}</td>
+        const vend = DB.state.usuarios.find(u=>u.id===c.created_by);
+        return `<tr data-vendedor="${c.created_by||''}"><td>${c.nombre}</td><td>${vend?vend.nombre:'—'}</td><td>${c.telefono||'—'}</td><td>${r.compras.length}</td><td>${money(r.totalGastado)}</td>
           <td>${r.deuda>0?`<strong style="color:var(--red-700);">${money(r.deuda)}</strong>`:money(0)}</td>
           <td><div class="icon-actions-row" style="margin-top:0;">
             ${botonesContacto(c.telefono)}
@@ -1874,7 +1933,7 @@ PAGES['a-clientes'] = () => {
             <button class="icon-btn edit" data-action="editar-cliente" data-id="${c.id}" data-tip="Editar">${icon('edit')}</button>
             <button class="icon-btn delete" data-action="eliminar-cliente" data-id="${c.id}" data-tip="Eliminar">${icon('trash')}</button>
           </div></td></tr>`;
-      }).join('') : `<tr class="empty-row"><td colspan="6">Sin clientes registrados todavía — se pueden crear aquí o directo al vender un producto</td></tr>`}
+      }).join('') : `<tr class="empty-row"><td colspan="7">Sin clientes registrados todavía — se pueden crear aquí o directo al vender un producto</td></tr>`}
       </tbody></table></div>
     </div>`;
 };
@@ -2564,17 +2623,26 @@ function modalUsuario(usuario){
   });
 }
 
-function modalDevolucion(ventaId){
+// instant=true (solo admin, desde a-devoluciones): se registra YA aprobada,
+// sin pasar por "pendiente" — el producto va directo a Inventario > Revisión.
+// instant=false (vendedora, desde Mis Ventas): sigue siendo una solicitud
+// que el admin tiene que aprobar/rechazar, porque ella no tiene esa autoridad.
+function modalDevolucion(ventaId, instant){
   openModal(`
-    <div class="modal-head"><div class="modal-title">Solicitar Devolución</div><button class="icon-btn" onclick="closeModal()">${icon('x')}</button></div>
-    <div class="modal-body"><div class="form-group"><label>Razón *</label><textarea id="devRazon" rows="3" placeholder="Explica el motivo de la devolución"></textarea></div></div>
-    <div class="modal-foot"><button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="btnEnviarDev">Enviar solicitud</button></div>`);
+    <div class="modal-head"><div class="modal-title">${instant?'Registrar Devolución':'Solicitar Devolución'}</div><button class="icon-btn" onclick="closeModal()">${icon('x')}</button></div>
+    <div class="modal-body">
+      ${instant?`<p class="text-muted mb-0">Se marca de una vez como devuelta: se reversa la comisión y el producto pasa a "Devuelto — requiere revisión" en Inventario.</p>`:''}
+      <div class="form-group mt-16"><label>Razón *</label><textarea id="devRazon" rows="3" placeholder="Explica el motivo de la devolución"></textarea></div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="btnEnviarDev">${instant?'Registrar devolución':'Enviar solicitud'}</button></div>`);
   document.getElementById('btnEnviarDev').addEventListener('click', async ()=>{
     const razon = document.getElementById('devRazon').value.trim();
     if(!razon) return toast('Escribe una razón','danger');
-    const res = await DB.solicitarDevolucion(ventaId, razon);
-    if(!res.ok) return toast('No se pudo enviar: '+res.error,'danger');
-    toast('Solicitud enviada','success'); closeModal(); await refresh();
+    const res = instant ? await DB.registrarDevolucionAdmin(ventaId, razon) : await DB.solicitarDevolucion(ventaId, razon);
+    if(!res.ok) return toast('No se pudo: '+res.error,'danger');
+    closeModal();
+    if(instant){ toast('Devolución registrada — revísala en Inventario','success'); await DB.fetchAll(); inventarioSeccionAbierta='devuelto'; navigate('a-inventario'); }
+    else { toast('Solicitud enviada','success'); await refresh(); }
   });
 }
 
@@ -2763,7 +2831,15 @@ function bindPageEvents(page){
   }
   if(page==='a-cajas') document.getElementById('btnNuevaCaja').addEventListener('click', modalNuevaCaja);
   if(page==='a-categorias') document.getElementById('btnNuevaCategoria').addEventListener('click', ()=>modalCategoria(null));
-  if(page==='a-clientes') document.getElementById('btnNuevoCliente').addEventListener('click', ()=>modalCliente(null));
+  if(page==='a-clientes' || page==='v-clientes') document.getElementById('btnNuevoCliente').addEventListener('click', ()=>modalCliente(null));
+  if(page==='a-clientes'){
+    document.getElementById('clientesFiltroVendedor').addEventListener('change', e=>{
+      const v = e.target.value;
+      document.querySelectorAll('#clientesTbody tr[data-vendedor]').forEach(tr=>{
+        tr.style.display = (!v || tr.dataset.vendedor===v) ? '' : 'none';
+      });
+    });
+  }
   if(page==='a-gastos') document.getElementById('btnNuevoGasto').addEventListener('click', ()=>modalGasto(null));
   if(page==='a-config'){
     document.getElementById('btnBackupCompleto').addEventListener('click', exportBackupCompleto);
@@ -2814,6 +2890,14 @@ function exportReporteExcel(){
 // reporte (sin sidebar, botones ni el resto del panel), con mejor calidad
 // que capturar la pantalla como imagen.
 function exportReportePDF(){
+  // iOS: la app instalada desde el ícono corre en modo "standalone", y ahí
+  // Safari/WebKit no tiene diálogo de impresión — es una limitación del
+  // sistema, no se puede activar por JS. Se abre la misma página en Safari
+  // (fuera del modo standalone), donde sí existe, y ahí se imprime sola.
+  if(window.navigator.standalone === true){
+    window.open(location.pathname + '?autoprint=reporte&dias=' + reporteRangoDias, '_blank');
+    return;
+  }
   const r = datosReporte(reporteRangoDias);
   const fecha = new Date().toLocaleDateString('es-GT', { day:'2-digit', month:'long', year:'numeric' });
   const area = document.getElementById('reportePrintArea');
@@ -2927,7 +3011,8 @@ document.getElementById('mainContent').addEventListener('click', async e=>{
     if(r.ok){ toast(u.nombre+' fue reactivada','success'); await refresh(); }
     else toast('No se pudo reactivar: '+r.error,'danger');
   }
-  else if(action==='solicitar-devolucion'){ modalDevolucion(id); }
+  else if(action==='solicitar-devolucion'){ modalDevolucion(id, false); }
+  else if(action==='registrar-devolucion-admin'){ modalDevolucion(id, true); }
   else if(action==='pagar-comision'){ modalPagarComision(id); }
   else if(action==='aprobar-dev'){ const r=await DB.resolverDevolucion(id,true); if(r.ok){ toast('Devolución aprobada','success'); await refresh(); } else toast('No se pudo: '+r.error,'danger'); }
   else if(action==='rechazar-dev'){ const r=await DB.resolverDevolucion(id,false); if(r.ok){ toast('Devolución rechazada'); await refresh(); } else toast('No se pudo: '+r.error,'danger'); }
@@ -2935,7 +3020,7 @@ document.getElementById('mainContent').addEventListener('click', async e=>{
   else if(action==='editar-cliente'){ modalCliente(DB.state.clientes.find(c=>c.id===id)); }
   else if(action==='eliminar-cliente'){ if(confirm('¿Eliminar este cliente? Su historial de compras se conserva, solo deja de aparecer en el catálogo.')){ const r=await DB.eliminarCliente(id); if(r.ok){ toast('Cliente eliminado','success'); await refresh(); } else toast('No se pudo eliminar: '+r.error,'danger'); } }
   else if(action==='ver-historial-cliente'){ modalHistorialCliente(DB.state.clientes.find(c=>c.id===id)); }
-  else if(action==='toggle-seccion'){ const key=btn.dataset.key; if(expandedSections.has(key)) expandedSections.delete(key); else expandedSections.add(key); navigate(currentPage); }
+  else if(action==='toggle-seccion'){ const key=btn.dataset.key; inventarioSeccionAbierta = (inventarioSeccionAbierta===key) ? null : key; navigate(currentPage); }
 });
 
 /* =====================================================================
@@ -3056,7 +3141,19 @@ function showApp(user){
   document.getElementById('userRole').textContent = DB.rolLabel(user);
   buildSidebar();
   refreshBadges();
-  navigate(user.rol==='administrador' ? 'a-dashboard' : 'v-dashboard');
+  // Si venimos del "abrir en Safari" que dispara exportReportePDF() cuando la
+  // app instalada en iOS no puede imprimir (ver ahí el porqué): al cargar acá
+  // (ya en Safari normal, con la sesión ya iniciada) vamos directo a Reportes
+  // y disparamos la impresión sola.
+  const params = new URLSearchParams(location.search);
+  if(params.get('autoprint')==='reporte' && user.rol==='administrador'){
+    reporteRangoDias = Number(params.get('dias')) || 14;
+    history.replaceState(null, '', location.pathname);
+    navigate('a-reportes');
+    setTimeout(exportReportePDF, 300);
+  } else {
+    navigate(user.rol==='administrador' ? 'a-dashboard' : 'v-dashboard');
+  }
 }
 
 document.getElementById('loginForm').addEventListener('submit', async e=>{
