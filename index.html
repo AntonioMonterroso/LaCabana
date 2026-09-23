@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>La Cabaña · Panel de Inventario</title>
 <!-- PWA: solo hace instalable el sitio (ícono en pantalla de inicio, se abre
      sin barra del navegador). No cambia nada del diseño/HTML/CSS de la app.
@@ -10,7 +10,11 @@
      reciente publicada, igual que abrir la página normal — cualquier
      cambio futuro que subas se refleja de inmediato, sin caché que limpiar. -->
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#3B2A1F">
+<!-- Igual al --color-surface claro (topbar/fondo) — en Android, esto es lo que
+     pinta la barra de estado del sistema; si no calza con lo que hay debajo se
+     ve una franja de color distinto arriba (aplicarTemaOscuro la actualiza
+     cuando cambia a oscuro, para que siga calzando). -->
+<meta name="theme-color" content="#FFFDF9">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -73,6 +77,10 @@
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.001ms!important;transition-duration:.001ms!important;}
 }
+/* Android (a diferencia de iOS Safari) deja ver el fondo blanco por default
+   de <html> en los bordes cuando 100vh no calza exacto con lo visible (barra
+   de direcciones dinámica) — sin esto se ve una franja sin color abajo. */
+html{background:var(--color-bg);}
 body{font-family:var(--font-body);background:var(--color-bg);color:var(--color-text);line-height:1.5;font-size:14px;transition:background 200ms var(--ease-out),color 200ms var(--ease-out);}
 button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit;}
 input,select,textarea{background:var(--color-surface-alt);border:1px solid var(--color-border);border-radius:10px;padding:10px 12px;width:100%;
@@ -86,7 +94,7 @@ h1,h2,h3{font-weight:700;}
 [hidden]{display:none!important;}
 
 /* ---------- layout ---------- */
-.app-shell{display:flex;min-height:100vh;}
+.app-shell{display:flex;min-height:100vh;min-height:100dvh;}
 .sidebar{width:260px;flex-shrink:0;background:linear-gradient(160deg,var(--sidebar-bg-1),var(--sidebar-bg-2));
   color:var(--sidebar-text);padding:22px 16px;display:flex;flex-direction:column;}
 .sidebar-footer-art{margin-top:auto;padding-top:26px;display:flex;justify-content:center;opacity:.85;}
@@ -109,7 +117,7 @@ h1,h2,h3{font-weight:700;}
   padding:1px 6px;min-width:16px;text-align:center;}
 
 .content{flex:1;min-width:0;display:flex;flex-direction:column;}
-.topbar{background:var(--color-surface);border-bottom:1px solid var(--color-border);padding:14px 26px;
+.topbar{background:var(--color-surface);border-bottom:1px solid var(--color-border);padding:calc(14px + env(safe-area-inset-top)) 26px 14px;
   display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;}
 .topbar-title{font-size:19px;font-weight:700;}
 .topbar-sub{font-size:12px;color:var(--color-text-muted);}
@@ -121,7 +129,8 @@ button.menu-toggle{display:none;}
 .sidebar-scrim.open{opacity:1;pointer-events:auto;}
 @media (max-width:980px){
   .sidebar{position:fixed;top:0;left:0;height:100vh;height:100dvh;z-index:300;
-    width:min(82vw,300px);transform:translateX(-100%);transition:transform 280ms var(--ease-drawer);}
+    width:min(82vw,300px);transform:translateX(-100%);transition:transform 280ms var(--ease-drawer);
+    padding-top:calc(22px + env(safe-area-inset-top));padding-bottom:calc(22px + env(safe-area-inset-bottom));}
   .sidebar.open{transform:translateX(0);box-shadow:var(--shadow-lg);}
   button.menu-toggle{display:inline-flex;}
   .form-row{grid-template-columns:1fr;}
@@ -265,7 +274,7 @@ tbody tr:hover{background:var(--color-surface-alt);}
 .modal-foot{display:flex;justify-content:flex-end;gap:10px;padding:16px 22px;border-top:1px solid var(--color-border);}
 
 /* ---------- login ---------- */
-.login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;
+.login-screen{min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;
   background:radial-gradient(circle at 20% 15%,rgba(190,138,138,.12),transparent 45%) , var(--color-bg);padding:20px;}
 .login-box{background:var(--color-surface);border:1px solid var(--color-border);border-radius:20px;padding:42px 36px;width:100%;max-width:400px;box-shadow:var(--shadow-lg);}
 .login-logo{display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:26px;}
@@ -509,7 +518,7 @@ const DB = {
   async fetchAll(){
     const [usuariosRes, usuariosPubRes, configRes, cajasRes, productosRes, fotosRes,
            categoriasRes, gastosRes, gastosAplicadosRes, ventaHistorialRes,
-           pagosRes, devolucionesRes, bitacoraRes, notifRes, clientesRes] = await Promise.all([
+           pagosRes, devolucionesRes, bitacoraRes, notifRes, clientesRes, abonosRes] = await Promise.all([
       sb.from('usuarios').select('*'),
       sb.from('usuarios_publico').select('*'),
       sb.from('configuracion').select('*'),
@@ -525,6 +534,7 @@ const DB = {
       sb.from('bitacora_cambios').select('*').order('created_at', { ascending:false }).limit(200),
       sb.from('notificaciones').select('*').order('created_at', { ascending:false }).limit(50),
       sb.from('clientes').select('*').order('nombre'),
+      sb.from('abonos').select('*').order('created_at', { ascending:false }),
     ]);
     // La tabla "usuarios" solo trae la fila propia (o todas, si eres admin);
     // usuarios_publico trae nombre/género/rol de todo el mundo. Se combinan
@@ -547,6 +557,7 @@ const DB = {
       bitacora: bitacoraRes.data || [],
       notificaciones: notifRes.data || [],
       clientes: clientesRes.data || [],
+      abonos: abonosRes.data || [],
     };
   },
 
@@ -848,10 +859,12 @@ const DB = {
     return { ok:true };
   },
   // Resumen de compras de un cliente: cuántas, cuánto ha gastado en total, y cuánto debe.
+  // La deuda es el SALDO (precio - lo ya abonado), no el precio completo —
+  // así un abono parcial se refleja de una vez en el total que debe.
   resumenCliente(clienteId){
     const compras = this.state.venta_historial.filter(v=>v.cliente_id===clienteId);
     const totalGastado = compras.reduce((s,v)=>s+v.precio_venta,0);
-    const deuda = compras.filter(v=>v.estado_pago==='pendiente').reduce((s,v)=>s+v.precio_venta,0);
+    const deuda = compras.filter(v=>v.estado_pago==='pendiente').reduce((s,v)=>s+saldoPendiente(v),0);
     return { compras, totalGastado, deuda };
   },
   // Ventas con el producto ya entregado pero el cliente todavía no paga
@@ -859,10 +872,15 @@ const DB = {
   ventasPendientesDeCobro(){
     return this.state.venta_historial.filter(v=>v.estado_pago==='pendiente' && v.estado_venta==='vendido');
   },
-  async marcarPagoCliente(ventaId){
-    const { data, error } = await sb.rpc('fn_marcar_pago_cliente', { p_venta_id: ventaId });
+  // Abono parcial o total — monto no puede ser mayor al saldo pendiente (lo valida el server).
+  // Dejar el monto igual al saldo completo es la forma de "pagar todo de un click".
+  async abonarVenta(ventaId, monto){
+    const { data, error } = await sb.rpc('fn_abonar_venta', { p_venta_id: ventaId, p_monto: monto });
     if(error) return { ok:false, error: error.message };
     return { ok:true, data };
+  },
+  abonosDe(ventaId){
+    return this.state.abonos.filter(a=>a.venta_historial_id===ventaId).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
   },
 
   // Cuenta real en la base (no el cache limitado a 200 filas) — para poder
@@ -1068,6 +1086,8 @@ function reservaCountdownBadge(p){
   const cls = urgente ? 'badge-danger' : medio ? 'badge-warning' : 'badge-neutral';
   return `<span class="badge ${cls}" data-tip="Se libera sola si nadie vende">${icon('clock')} vence en ${fmtHoras(h)}</span>`;
 }
+// Lo que falta pagar de una venta (precio menos lo ya abonado) — nunca negativo.
+function saldoPendiente(v){ return Math.max(0, v.precio_venta - (v.monto_pagado||0)); }
 // Cuánto lleva pendiente una cuenta por cobrar, coloreado contra el umbral
 // configurable de "deuda vencida" (mismo campo que revisa el aviso automático).
 function deudaBadge(venta){
@@ -1215,6 +1235,9 @@ function aplicarTemaOscuro(oscuro){
   try{ localStorage.setItem('lc_tema_oscuro', oscuro ? '1' : '0'); }catch(e){}
   const btn = document.getElementById('temaOscuroBtn');
   if(btn){ btn.innerHTML = icon(oscuro?'sun':'moon'); btn.dataset.tip = oscuro ? 'Modo claro' : 'Modo oscuro'; }
+  // La barra de estado de Android se pinta con esto — si no sigue al tema
+  // se ve una franja de color que no calza arriba de la pantalla.
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', oscuro ? '#241C17' : '#FFFDF9');
 }
 (function(){
   let guardado = null;
@@ -1538,12 +1561,14 @@ function renderVentasTable(ventas, showVendedor){
     const vend = DB.state.usuarios.find(u=>u.id===v.vendedor_id);
     const info = v.estado_venta==='devuelto' ? {label:'Devuelto',cls:'badge-danger'} : {label:v.comision_estado==='pagada'?'Comisión pagada':'Comisión ganada', cls: v.comision_estado==='pagada'?'badge-info':'badge-success'};
     const pendiente = v.estado_pago==='pendiente';
+    const abonado = pendiente && v.monto_pagado>0;
     return `<tr><td>${v.producto_nombre}<div class="text-faint" style="font-size:11px;">${v.producto_codigo}</div></td>
       ${showVendedor?`<td>${vend?vend.nombre:'—'}</td>`:''}
       <td>${fmtDateShort(v.fecha_venta)}</td><td>${money(v.precio_venta)}</td><td>${money(v.comision_monto)}</td>
       <td><span class="badge ${info.cls}">${info.label}</span></td>
-      <td><span class="badge ${pendiente?'badge-warning':'badge-success'}">${pendiente?'Pendiente':'Pagado'}</span>
-        ${pendiente?`<button class="btn btn-ghost btn-sm" style="padding:3px 8px;" data-action="marcar-pago-cliente" data-id="${v.id}">Marcar pagado</button>`:''}</td></tr>`;
+      <td><span class="badge ${pendiente?'badge-warning':'badge-success'}">${pendiente?(abonado?'Abono parcial':'Pendiente'):'Pagado'}</span>
+        ${abonado?`<div class="text-faint" style="font-size:11px;">debe ${money(saldoPendiente(v))}</div>`:''}
+        ${pendiente?`<button class="btn btn-ghost btn-sm" style="padding:3px 8px;" data-action="marcar-pago-cliente" data-id="${v.id}">Abonar</button>`:''}</td></tr>`;
   }).join('') : `<tr class="empty-row"><td colspan="${cols}">Sin ventas registradas</td></tr>`}
   </tbody></table></div>`;
 }
@@ -1604,6 +1629,7 @@ PAGES['v-clientes'] = () => {
           <td>${r.deuda>0?`<strong style="color:var(--red-700);">${money(r.deuda)}</strong>`:money(0)}</td>
           <td><div class="icon-actions-row" style="margin-top:0;">
             ${botonesContacto(c.telefono)}
+            ${iconEstadoCuentaWhatsApp(c)}
             <button class="icon-btn info" data-action="ver-historial-cliente" data-id="${c.id}" data-tip="Ver historial">${icon('file')}</button>
             <button class="icon-btn edit" data-action="editar-cliente" data-id="${c.id}" data-tip="Editar">${icon('edit')}</button>
           </div></td></tr>`;
@@ -1687,8 +1713,8 @@ PAGES['a-pendientes'] = () => {
       ${deudas.slice().sort((a,b)=>new Date(a.fecha_venta)-new Date(b.fecha_venta)).map(v=>{
         const cliente = DB.state.clientes.find(c=>c.id===v.cliente_id);
         return `<tr><td>${v.producto_nombre}</td><td>${cliente?cliente.nombre:'<span class="text-faint">Sin cliente asignado</span>'}</td>
-          <td>${money(v.precio_venta)}</td><td>${fmtDateShort(v.fecha_venta)}</td><td>${deudaBadge(v)}</td>
-          <td><button class="btn btn-primary btn-sm" data-action="marcar-pago-cliente" data-id="${v.id}">${icon('check')} Marcar pagado</button></td></tr>`;
+          <td>${money(saldoPendiente(v))}${v.monto_pagado>0?`<div class="text-faint" style="font-size:11px;">de ${money(v.precio_venta)}</div>`:''}</td><td>${fmtDateShort(v.fecha_venta)}</td><td>${deudaBadge(v)}</td>
+          <td><button class="btn btn-primary btn-sm" data-action="marcar-pago-cliente" data-id="${v.id}">${icon('check')} Abonar</button></td></tr>`;
       }).join('')}
       </tbody></table></div>
     </div>` : ''}
@@ -1891,7 +1917,7 @@ PAGES['a-devoluciones'] = () => {
 // de cualquier vendedora (venta_historial no distingue quién vendió para esto).
 PAGES['a-clientes'] = () => {
   const pendientes = DB.ventasPendientesDeCobro();
-  const totalPorCobrar = pendientes.reduce((s,v)=>s+v.precio_venta,0);
+  const totalPorCobrar = pendientes.reduce((s,v)=>s+saldoPendiente(v),0);
   const clientes = DB.state.clientes;
   return `
     <div class="kpi-grid">
@@ -1906,8 +1932,8 @@ PAGES['a-clientes'] = () => {
         const cliente = DB.state.clientes.find(c=>c.id===v.cliente_id);
         const vend = DB.state.usuarios.find(u=>u.id===v.vendedor_id);
         return `<tr><td>${v.producto_nombre}</td><td>${cliente?cliente.nombre:'<span class="text-faint">Sin cliente asignado</span>'}</td>
-          <td>${vend?vend.nombre:'—'}</td><td>${money(v.precio_venta)}</td><td>${fmtDateShort(v.fecha_venta)}</td><td>${deudaBadge(v)}</td>
-          <td><button class="btn btn-primary btn-sm" data-action="marcar-pago-cliente" data-id="${v.id}">${icon('check')} Marcar pagado</button></td></tr>`;
+          <td>${vend?vend.nombre:'—'}</td><td>${money(saldoPendiente(v))}${v.monto_pagado>0?`<div class="text-faint" style="font-size:11px;">de ${money(v.precio_venta)}</div>`:''}</td><td>${fmtDateShort(v.fecha_venta)}</td><td>${deudaBadge(v)}</td>
+          <td><button class="btn btn-primary btn-sm" data-action="marcar-pago-cliente" data-id="${v.id}">${icon('check')} Abonar</button></td></tr>`;
       }).join('') : `<tr class="empty-row"><td colspan="7">No hay ventas pendientes de cobro</td></tr>`}
       </tbody></table></div>
     </div>
@@ -1929,6 +1955,7 @@ PAGES['a-clientes'] = () => {
           <td>${r.deuda>0?`<strong style="color:var(--red-700);">${money(r.deuda)}</strong>`:money(0)}</td>
           <td><div class="icon-actions-row" style="margin-top:0;">
             ${botonesContacto(c.telefono)}
+            ${iconEstadoCuentaWhatsApp(c)}
             <button class="icon-btn info" data-action="ver-historial-cliente" data-id="${c.id}" data-tip="Ver historial">${icon('file')}</button>
             <button class="icon-btn edit" data-action="editar-cliente" data-id="${c.id}" data-tip="Editar">${icon('edit')}</button>
             <button class="icon-btn delete" data-action="eliminar-cliente" data-id="${c.id}" data-tip="Eliminar">${icon('trash')}</button>
@@ -2529,21 +2556,98 @@ function modalCliente(cliente){
   });
 }
 
+// Texto plano para WhatsApp con el desglose de lo que debe (producto por
+// producto, con su saldo individual) y el total — sin emojis, usando el
+// *negrita* nativo de WhatsApp para que se vea ordenado igual sin HTML.
+function mensajeEstadoCuenta(cliente){
+  const r = DB.resumenCliente(cliente.id);
+  const pendientes = r.compras.filter(v=>v.estado_pago==='pendiente').sort((a,b)=>new Date(a.fecha_venta)-new Date(b.fecha_venta));
+  const fecha = new Date().toLocaleDateString('es-GT',{day:'2-digit',month:'2-digit',year:'numeric'});
+  const lineas = pendientes.map(v=>`- ${v.producto_nombre}: ${money(saldoPendiente(v))} pendiente`).join('\n');
+  return `*Estado de cuenta — La Cabaña*\nCliente: ${cliente.nombre}\n\n${lineas}\n\n*Total pendiente: ${money(r.deuda)}*\n\nGenerado el ${fecha}`;
+}
+function hrefEstadoCuentaWhatsApp(cliente){
+  const tel = telefonoInternacional(cliente.telefono);
+  const mensaje = encodeURIComponent(mensajeEstadoCuenta(cliente));
+  return tel ? `https://wa.me/${tel.slice(1)}?text=${mensaje}` : `https://wa.me/?text=${mensaje}`;
+}
+function botonEstadoCuentaWhatsApp(cliente){
+  const r = DB.resumenCliente(cliente.id);
+  if(r.deuda<=0) return '';
+  return `<a class="btn btn-secondary btn-sm" href="${hrefEstadoCuentaWhatsApp(cliente)}" target="_blank" rel="noopener">${icon('whatsapp')} Estado de cuenta</a>`;
+}
+// Versión compacta (icon-btn) para meterla junto a los demás botones de la fila.
+function iconEstadoCuentaWhatsApp(cliente){
+  const r = DB.resumenCliente(cliente.id);
+  if(r.deuda<=0) return '';
+  return `<a class="icon-btn confirm" href="${hrefEstadoCuentaWhatsApp(cliente)}" target="_blank" rel="noopener" data-tip="Enviar estado de cuenta por WhatsApp">${icon('whatsapp')}</a>`;
+}
+function mensajeErrorAbono(err){
+  if(err==='MONTO_MAYOR_AL_SALDO') return 'Ese monto es mayor a lo que debe';
+  if(err==='MONTO_INVALIDO') return 'Escribe un monto válido';
+  if(err==='SIN_PERMISO') return 'No tienes permiso sobre esa venta';
+  return err;
+}
+// Un solo modal para las dos cosas: pagar TODO (deja el monto tal cual,
+// viene precargado con el saldo completo) o un abono parcial (lo cambias).
+function modalAbonar(ventaId){
+  const v = DB.state.venta_historial.find(x=>x.id===ventaId);
+  if(!v) return;
+  const saldo = saldoPendiente(v);
+  const abonos = DB.abonosDe(v.id);
+  openModal(`
+    <div class="modal-head"><div class="modal-title">Abonar — ${v.producto_nombre}</div><button class="icon-btn" onclick="closeModal()">${icon('x')}</button></div>
+    <div class="modal-body">
+      <div class="calc-box">
+        <div class="calc-row"><span>Precio</span><span>${money(v.precio_venta)}</span></div>
+        <div class="calc-row"><span>Ya abonado</span><span>${money(v.monto_pagado||0)}</span></div>
+        <div class="calc-row total"><span>Saldo pendiente</span><span>${money(saldo)}</span></div>
+      </div>
+      <div class="form-group mt-16"><label>Monto a abonar *</label><input type="number" step="0.01" id="abonoMonto" value="${saldo.toFixed(2)}" max="${saldo}" min="0.01"></div>
+      <div class="text-faint" style="font-size:11.5px;">Déjalo así para pagar todo el saldo, o cámbialo para un abono parcial.</div>
+      ${abonos.length ? `<div class="mt-16"><div class="text-muted mb-8" style="font-size:12px;font-weight:700;">Abonos anteriores</div>
+        <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Monto</th></tr></thead><tbody>
+        ${abonos.map(a=>`<tr><td>${fmtDateShort(a.created_at)}</td><td>${money(a.monto)}</td></tr>`).join('')}
+        </tbody></table></div></div>` : ''}
+    </div>
+    <div class="modal-foot"><button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="btnConfirmarAbono">${icon('check')} Registrar abono</button></div>`);
+  document.getElementById('btnConfirmarAbono').addEventListener('click', async ()=>{
+    const monto = Number(document.getElementById('abonoMonto').value);
+    if(!monto || monto<=0) return toast('Escribe un monto válido','danger');
+    if(monto > saldo + 0.005) return toast('El abono no puede ser mayor al saldo pendiente','danger');
+    const btn = document.getElementById('btnConfirmarAbono'); btn.disabled = true;
+    const res = await DB.abonarVenta(v.id, monto);
+    if(res.ok){
+      toast(res.data.estado_pago==='pagado' ? 'Deuda saldada' : 'Abono registrado — saldo: '+money(saldoPendiente(res.data)), 'success');
+      closeModal(); await refresh();
+    } else { toast('No se pudo: '+mensajeErrorAbono(res.error), 'danger'); btn.disabled=false; }
+  });
+}
+
 function modalHistorialCliente(cliente){
   const r = DB.resumenCliente(cliente.id);
   openModal(`
     <div class="modal-head"><div class="modal-title">${icon('users2')} ${cliente.nombre}</div><button class="icon-btn" onclick="closeModal()">${icon('x')}</button></div>
     <div class="modal-body">
-      ${cliente.telefono?`<div class="flex-between mb-0"><div class="text-muted">${cliente.telefono}</div><div class="icon-actions-row" style="margin-top:0;width:auto;">${botonesContacto(cliente.telefono)}</div></div>`:''}
+      <div class="flex-between mb-0">
+        ${cliente.telefono?`<div class="text-muted">${cliente.telefono}</div>`:'<div></div>'}
+        <div class="icon-actions-row" style="margin-top:0;width:auto;">${botonesContacto(cliente.telefono)}</div>
+      </div>
       <div class="calc-box mt-16">
         <div class="calc-row"><span>Compras totales</span><span>${r.compras.length}</span></div>
         <div class="calc-row"><span>Total gastado</span><span>${money(r.totalGastado)}</span></div>
         <div class="calc-row total" style="${r.deuda>0?'color:var(--red-700);':''}"><span>Deuda actual</span><span>${money(r.deuda)}</span></div>
       </div>
-      <div class="table-wrap mt-16"><table><thead><tr><th>Producto</th><th>Fecha</th><th>Monto</th><th>Estado</th><th></th></tr></thead><tbody>
-      ${r.compras.length ? r.compras.slice().sort((a,b)=>new Date(b.fecha_venta)-new Date(a.fecha_venta)).map(v=>`<tr><td>${v.producto_nombre}</td><td>${fmtDateShort(v.fecha_venta)}</td><td>${money(v.precio_venta)}</td>
-        <td><span class="badge ${v.estado_pago==='pagado'?'badge-success':'badge-warning'}">${v.estado_pago==='pagado'?'Pagado':'Pendiente'}</span></td>
-        <td>${v.estado_pago==='pendiente'?`<button class="btn btn-primary btn-sm" data-action="marcar-pago-cliente" data-id="${v.id}">${icon('check')} Marcar pagado</button>`:''}</td></tr>`).join('')
+      ${r.deuda>0?`<div class="mt-8">${botonEstadoCuentaWhatsApp(cliente)}</div>`:''}
+      <div class="table-wrap mt-16"><table><thead><tr><th>Producto</th><th>Fecha</th><th>Saldo</th><th>Estado</th><th></th></tr></thead><tbody>
+      ${r.compras.length ? r.compras.slice().sort((a,b)=>new Date(b.fecha_venta)-new Date(a.fecha_venta)).map(v=>{
+        const saldo = saldoPendiente(v);
+        const abonado = v.monto_pagado>0 && v.estado_pago==='pendiente';
+        return `<tr><td>${v.producto_nombre}</td><td>${fmtDateShort(v.fecha_venta)}</td>
+        <td>${money(saldo)}${abonado?`<div class="text-faint" style="font-size:11px;">abonó ${money(v.monto_pagado)} de ${money(v.precio_venta)}</div>`:''}</td>
+        <td><span class="badge ${v.estado_pago==='pagado'?'badge-success':'badge-warning'}">${v.estado_pago==='pagado'?'Pagado':abonado?'Abono parcial':'Pendiente'}</span></td>
+        <td>${v.estado_pago==='pendiente'?`<button class="btn btn-primary btn-sm" data-action="marcar-pago-cliente" data-id="${v.id}">${icon('check')} Abonar</button>`:''}</td></tr>`;
+      }).join('')
         : `<tr class="empty-row"><td colspan="5">Sin compras registradas todavía</td></tr>`}
       </tbody></table></div>
     </div>`, 'lg');
@@ -3016,7 +3120,7 @@ document.getElementById('mainContent').addEventListener('click', async e=>{
   else if(action==='pagar-comision'){ modalPagarComision(id); }
   else if(action==='aprobar-dev'){ const r=await DB.resolverDevolucion(id,true); if(r.ok){ toast('Devolución aprobada','success'); await refresh(); } else toast('No se pudo: '+r.error,'danger'); }
   else if(action==='rechazar-dev'){ const r=await DB.resolverDevolucion(id,false); if(r.ok){ toast('Devolución rechazada'); await refresh(); } else toast('No se pudo: '+r.error,'danger'); }
-  else if(action==='marcar-pago-cliente'){ const r=await DB.marcarPagoCliente(id); if(r.ok){ toast('Pago del cliente registrado','success'); closeModal(); await refresh(); } else toast('No se pudo: '+r.error,'danger'); }
+  else if(action==='marcar-pago-cliente'){ modalAbonar(id); }
   else if(action==='editar-cliente'){ modalCliente(DB.state.clientes.find(c=>c.id===id)); }
   else if(action==='eliminar-cliente'){ if(confirm('¿Eliminar este cliente? Su historial de compras se conserva, solo deja de aparecer en el catálogo.')){ const r=await DB.eliminarCliente(id); if(r.ok){ toast('Cliente eliminado','success'); await refresh(); } else toast('No se pudo eliminar: '+r.error,'danger'); } }
   else if(action==='ver-historial-cliente'){ modalHistorialCliente(DB.state.clientes.find(c=>c.id===id)); }
