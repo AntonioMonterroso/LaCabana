@@ -18,7 +18,11 @@
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<!-- "black-translucent" hace que iOS ponga una franja traslúcida ENCIMA del
+     contenido bajo la barra de estado — eso es el "borroso" que se veía
+     arriba, permanente, no una animación. "default" deja la barra de estado
+     normal (opaca) y el contenido empieza debajo, sin overlay ni blur. -->
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="La Cabaña">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1178,6 +1182,7 @@ function icon(name){
     sun:'<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>',
     phone:'<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>',
     chevron:'<polyline points="6 9 12 15 18 9"/>',
+    receipt:'<path d="M4 2v20l2.5-1.5L9 22l2.5-1.5L14 22l2.5-1.5L19 22V2l-2.5 1.5L14 2l-2.5 1.5L9 2 6.5 3.5z"/><line x1="8" y1="7" x2="15" y2="7"/><line x1="8" y1="11" x2="15" y2="11"/><line x1="8" y1="15" x2="12" y2="15"/>',
   }[name] || '';
   return `<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${I}</svg>`;
 }
@@ -2571,16 +2576,18 @@ function hrefEstadoCuentaWhatsApp(cliente){
   const mensaje = encodeURIComponent(mensajeEstadoCuenta(cliente));
   return tel ? `https://wa.me/${tel.slice(1)}?text=${mensaje}` : `https://wa.me/?text=${mensaje}`;
 }
+// Ícono de recibo (no el de WhatsApp) para no confundirlo con "contactar por
+// WhatsApp" — el tooltip/texto ya deja claro que se manda por ahí.
 function botonEstadoCuentaWhatsApp(cliente){
   const r = DB.resumenCliente(cliente.id);
   if(r.deuda<=0) return '';
-  return `<a class="btn btn-secondary btn-sm" href="${hrefEstadoCuentaWhatsApp(cliente)}" target="_blank" rel="noopener">${icon('whatsapp')} Estado de cuenta</a>`;
+  return `<a class="btn btn-secondary btn-sm" href="${hrefEstadoCuentaWhatsApp(cliente)}" target="_blank" rel="noopener">${icon('receipt')} Estado de cuenta</a>`;
 }
 // Versión compacta (icon-btn) para meterla junto a los demás botones de la fila.
 function iconEstadoCuentaWhatsApp(cliente){
   const r = DB.resumenCliente(cliente.id);
   if(r.deuda<=0) return '';
-  return `<a class="icon-btn confirm" href="${hrefEstadoCuentaWhatsApp(cliente)}" target="_blank" rel="noopener" data-tip="Enviar estado de cuenta por WhatsApp">${icon('whatsapp')}</a>`;
+  return `<a class="icon-btn confirm" href="${hrefEstadoCuentaWhatsApp(cliente)}" target="_blank" rel="noopener" data-tip="Enviar estado de cuenta por WhatsApp">${icon('receipt')}</a>`;
 }
 function mensajeErrorAbono(err){
   if(err==='MONTO_MAYOR_AL_SALDO') return 'Ese monto es mayor a lo que debe';
